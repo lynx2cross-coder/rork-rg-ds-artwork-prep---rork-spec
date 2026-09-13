@@ -121,6 +121,18 @@ Diagnostic reports are designed to avoid including ROM contents, artwork, passwo
 
 Filenames can be excluded from reports, and games can instead be represented anonymously as entries such as `Game 1`.
 
+
+## Screenshots
+
+![ROM Art Prep artwork gallery](artwork.png)
+
+![ROM Art Prep main screen](main-screen.png)
+
+![ROM Art Prep library scan](library-scan.png)
+
+
+
+
 ## AI-Assisted Development
 
 AI-assisted development tools were used during the creation and troubleshooting of ROM Art Prep.
