@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        A scan is long-running work the user explicitly starts and expects to finish
+        even with the screen off. A foreground service is the supported mechanism for
+        that; without it Android treats the app as cached the moment it leaves the
+        screen and is free to stop the process mid-scan.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Required separately from API 34 for the dataSync type specifically. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!--
+        From API 33 the progress notification needs the user's consent. The scan runs
+        either way — it is the service that keeps the process alive, not the
+        notification — so this is requested but never required.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".RgdsApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.RorkApp">
+        <!--
+            Orientation is deliberately never pinned: the app takes whatever the device
+            reports and adapts. That is what lets one build serve a landscape handheld
+            like the RG DS, a portrait phone, and a tablet held either way.
+
+            `fullUser` follows the user's own rotation preference rather than overriding
+            it, so a handheld whose natural orientation is landscape simply opens
+            landscape with nothing to configure.
+
+            Handling these config changes ourselves means a rotation re-lays out
+            instantly instead of recreating the activity — which matters most mid-scan,
+            where a restart would interrupt an in-flight batch.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="fullUser"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density"
+            android:theme="@style/Theme.RorkApp">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            Owns nothing: the scan itself lives in the process-wide coordinator. This
+            exists purely to tell Android the process is busy and to carry the progress
+            notification, which is what lets the Activity be destroyed without taking
+            the scan with it.
+
+            Not exported — only this app ever starts it.
+        -->
+        <service
+            android:name=".service.ScanService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+    </application>
+
+</manifest>

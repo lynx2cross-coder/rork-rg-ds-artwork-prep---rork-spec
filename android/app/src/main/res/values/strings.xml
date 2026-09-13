@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The single source of truth for the public-facing name. The launcher label,
+        the on-screen masthead and the shared report headers all read this, so the
+        name can never drift between them again.
+    -->
+    <string name="app_name">ROM Art Prep</string>
+    <string name="app_tagline">Artwork and game lists for your ROM collection</string>
+
+    <!--
+        Shown in Android's own notification settings, so it has to describe the
+        notification from the user's point of view rather than the app's.
+    -->
+    <string name="scan_channel_name">Artwork scans</string>
+    <string name="scan_channel_description">Shows progress while artwork is being downloaded, including when the screen is off.</string>
+    <string name="scan_notification_cancel">Cancel scan</string>
+</resources>

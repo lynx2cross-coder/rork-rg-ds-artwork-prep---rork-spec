@@ -1,0 +1,38 @@
+# React Native / Expo artifacts (should not exist in Kotlin projects)
+node_modules/
+.expo/
+.bundle/
+ios/
+babel.config.js
+metro.config.js
+package-lock.json
+tsconfig.json
+app.json
+
+# Gradle
+.gradle/
+build/
+local.properties
+
+# Android
+*.apk
+*.aab
+*.dex
+*.class
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Rork
+.rork/
+.env
+rork-eslint.config.js
+app/src/main/java/**/Config.kt
