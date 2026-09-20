@@ -160,6 +160,6 @@ A simple tool for getting your ROM artwork ready without changing the way you pl
 
 ## Copyright
 
-Copyright © 2026 Eric Cross. All rights reserved.
+Copyright © 2026 by Developer. All rights reserved.
 
 ROM Art Prep is provided publicly for viewing, testing, and discussion. No license is granted to reproduce, redistribute, modify, or commercially distribute the software or derivative works without permission from the copyright holder.
