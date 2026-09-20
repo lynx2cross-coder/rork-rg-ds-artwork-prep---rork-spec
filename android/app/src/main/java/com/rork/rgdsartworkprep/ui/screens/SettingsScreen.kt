@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -48,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,7 +58,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.rgdsartworkprep.AppGraph
 import com.rork.rgdsartworkprep.R
 import com.rork.rgdsartworkprep.data.CrashLog
+import com.rork.rgdsartworkprep.model.GameSystem
 import com.rork.rgdsartworkprep.model.ProviderId
+import com.rork.rgdsartworkprep.model.SystemCatalog
 import com.rork.rgdsartworkprep.network.ScreenScraperClient
 import com.rork.rgdsartworkprep.provider.TheGamesDbProvider
 import com.rork.rgdsartworkprep.ui.components.InfoPill
@@ -385,6 +389,77 @@ fun SettingsScreen(onBack: () -> Unit, onOpenDiagnostics: () -> Unit) {
                 null -> Unit
             }
         }
+        val systemsSection: @Composable () -> Unit = {
+            SectionTitle("Systems to look up")
+            val scrapable = SystemCatalog.scrapable
+            val enabledCount = scrapable.count { settings.isSystemEnabled(it.key) }
+            Text(
+                text = "Only the systems switched on here are searched for artwork. Everything " +
+                    "in your library is still scanned and recognised \u2014 a game on a system " +
+                    "that is off is simply passed over instead of being looked up.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+            Text(
+                text = "$enabledCount of ${scrapable.size} switched on",
+                style = MaterialTheme.typography.labelMedium,
+                color = if (enabledCount == 0) StatusRed else TextSecondary,
+            )
+            // Turning everything off is a legitimate choice, so it is allowed — but a
+            // scan that then skips the entire library would otherwise look like a bug.
+            if (enabledCount == 0) {
+                Text(
+                    text = "Every system is off, so a scan will skip your whole library.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusRed,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        AppGraph.settings.setAllSystemsEnabled(scrapable.map { it.key }, true)
+                    },
+                    enabled = enabledCount < scrapable.size,
+                    modifier = Modifier.weight(1f).height(layout.buttonHeight - 4.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, HairlineBorder),
+                ) {
+                    Text("Turn all on", color = TextSecondary, maxLines = 1)
+                }
+                OutlinedButton(
+                    onClick = {
+                        AppGraph.settings.setAllSystemsEnabled(scrapable.map { it.key }, false)
+                    },
+                    enabled = enabledCount > 0,
+                    modifier = Modifier.weight(1f).height(layout.buttonHeight - 4.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, HairlineBorder),
+                ) {
+                    Text("Turn all off", color = TextSecondary, maxLines = 1)
+                }
+            }
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = GraphiteElevated,
+                border = BorderStroke(1.dp, HairlineBorder),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    // Catalog order, which already groups the consoles by maker. The list
+                    // is read from the catalog itself so a system added in a later release
+                    // appears here without this screen being touched.
+                    scrapable.forEach { system ->
+                        SystemToggleRow(
+                            system = system,
+                            checked = settings.isSystemEnabled(system.key),
+                            onCheckedChange = {
+                                AppGraph.settings.setSystemEnabled(system.key, it)
+                            },
+                        )
+                    }
+                }
+            }
+        }
         val regionSection: @Composable () -> Unit = {
             SectionTitle("Preferred cover region")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -548,6 +623,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenDiagnostics: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     regionSection()
+                    systemsSection()
                     outputSection()
                     maintenanceSection()
                     Spacer(Modifier.height(16.dp))
@@ -563,6 +639,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenDiagnostics: () -> Unit) {
                 theGamesDbSection()
                 credentialsSection()
                 regionSection()
+                systemsSection()
                 outputSection()
                 maintenanceSection()
                 Spacer(Modifier.height(24.dp))
@@ -667,6 +744,61 @@ internal fun ToggleRow(
                 ),
             )
         }
+    }
+}
+
+/**
+ * One system in the "Systems to look up" list.
+ *
+ * Deliberately not a [ToggleRow]: that draws a card per setting, and forty stacked
+ * cards turn a list meant to be scanned at a glance into a page of scrolling. These
+ * are dense rows inside one card, with the short tag carrying the disambiguation
+ * (`GB`/`GBC`/`GBA` read alike at a glance, `Game Boy Color` does not).
+ */
+@Composable
+private fun SystemToggleRow(
+    system: GameSystem,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                onValueChange = onCheckedChange,
+                role = Role.Switch,
+            )
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(
+                text = system.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (checked) TextPrimary else TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = system.shortName,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                maxLines = 1,
+            )
+        }
+        Switch(
+            checked = checked,
+            // The whole row is the control; a nested clickable target would only add a
+            // second place to miss.
+            onCheckedChange = null,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Ink,
+                checkedTrackColor = AnbernicOrange,
+                uncheckedTrackColor = Graphite,
+                uncheckedBorderColor = HairlineBorder,
+            ),
+        )
     }
 }
 

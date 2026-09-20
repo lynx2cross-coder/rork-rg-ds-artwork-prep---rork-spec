@@ -17,8 +17,8 @@ plugins {
  * word followed by `=` and digits, and must find the real declaration inside
  * `defaultConfig`, not a helper up here.
  */
-val declaredBuildNumber = 18
-val declaredVersionName = "1.3.3"
+val declaredBuildNumber = 19
+val declaredVersionName = "1.4.0"
 
 /**
  * Values at or above this are a packaging timestamp rather than a hand-written build
@@ -112,6 +112,26 @@ android {
         // the first scan after updating, where ROMs whose remembered match was
         // discarded are identified again instead of being served from the cache.
         //
+        // 1.4.0: MINOR, and the first new user-facing capability since 1.3.0. Settings
+        // now lists every system this release can look artwork up for, and each one can
+        // be switched off. A switched-off system is still scanned, still recognised and
+        // still listed — only its artwork query is skipped, and the row says so in those
+        // words rather than borrowing "Unsupported", which would describe a deliberate
+        // choice as a limitation of the app.
+        //
+        // The preference records only the systems the user switched OFF. Recording the
+        // ones left on would freeze the catalog at the moment they last opened the
+        // screen, so every system added in a later release would arrive silently
+        // disabled for them — an app that quietly stops looking up a console after an
+        // update is indistinguishable from a broken one. With opt-outs stored, no
+        // preference at all means exactly today's behaviour and every existing install
+        // upgrades to an unchanged scan.
+        //
+        // The scan engine stays `queue-5`. Detection, scheduling, provider order,
+        // matching thresholds and request behaviour are untouched: the filter is one
+        // check between identifying a ROM's system and spending anything on it, so a
+        // report from this build stays comparable with a 1.3.3 one.
+        //
         // The next line MUST stay a plain integer literal. The packaging step that
         // builds the installable APK rewrites this file first, replacing the first
         // `versionCode = <digits>` it finds with a build timestamp — which is what
@@ -121,7 +141,7 @@ android {
         // already had the stamped 1789174724 installed. Android will not install a
         // lower version code over a higher one, so the RG DS rejected the package.
         // A reference compiles and tests green — it fails only on the device.
-        versionCode = 18
+        versionCode = 19
         versionName = declaredVersionName
 
         // Warn — never fail — when the literal above and declaredBuildNumber disagree.

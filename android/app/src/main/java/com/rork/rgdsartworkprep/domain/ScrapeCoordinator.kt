@@ -110,9 +110,20 @@ data class ScrapeState(
     val savedCount: Int
         get() = items.count { it.status == PrepStatus.Downloaded || it.status == PrepStatus.Exported }
 
-    /** ROMs that finished without needing a download: artwork was already there, or the system is unknown. */
+    /**
+     * ROMs that finished without needing a download: artwork was already there, the
+     * system is unknown, or the user switched that system off.
+     */
     val skippedCount: Int
-        get() = items.count { it.status == PrepStatus.AlreadyExists || it.status == PrepStatus.Unsupported }
+        get() = items.count {
+            it.status == PrepStatus.AlreadyExists ||
+                it.status == PrepStatus.Unsupported ||
+                it.status == PrepStatus.SystemDisabled
+        }
+
+    /** ROMs skipped purely because their system is switched off in Settings. */
+    val systemDisabledCount: Int
+        get() = items.count { it.status == PrepStatus.SystemDisabled }
     val isComplete: Boolean get() = !isRunning && items.isNotEmpty() && processed >= total
 
     /** Games set aside for a later automatic attempt. */
@@ -976,6 +987,18 @@ class ScrapeCoordinator(
         if (!system.scrapingEnabled) {
             updateItem(id) {
                 it.copy(status = PrepStatus.Unsupported, message = "${system.displayName} lookup is not enabled yet")
+            }
+            return null
+        }
+        // The user's own filter, checked here and nowhere else: after detection, so the
+        // ROM is still recognised and still says which system it belongs to, and before
+        // anything is spent on it — no checksum read, no request, no budget.
+        if (!settings.isSystemEnabled(system.key)) {
+            updateItem(id) {
+                it.copy(
+                    status = PrepStatus.SystemDisabled,
+                    message = "Skipped \u2014 ${system.displayName} is switched off in Settings",
+                )
             }
             return null
         }

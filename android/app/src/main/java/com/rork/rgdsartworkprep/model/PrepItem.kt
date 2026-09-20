@@ -23,6 +23,17 @@ enum class PrepStatus {
     NotFound,
     ApiError,
     Unsupported,
+
+    /**
+     * The user switched this system off, so no artwork was looked up.
+     *
+     * Kept apart from [Unsupported] because they are opposite facts. "Unsupported"
+     * says the app cannot look this system up; this says it can, and was told not to.
+     * Reusing the former would label a deliberate choice as a limitation and send the
+     * user looking for a defect that does not exist — and unlike every other skip, the
+     * remedy is a switch they own.
+     */
+    SystemDisabled,
 }
 
 /**
@@ -41,7 +52,10 @@ val PrepStatus.tone: StatusTone
         PrepStatus.Pending -> StatusTone.Neutral
         PrepStatus.Working -> StatusTone.Progress
         PrepStatus.Downloaded, PrepStatus.Exported -> StatusTone.Positive
-        PrepStatus.AlreadyExists, PrepStatus.Unsupported -> StatusTone.Neutral
+        PrepStatus.AlreadyExists,
+        PrepStatus.Unsupported,
+        PrepStatus.SystemDisabled,
+        -> StatusTone.Neutral
         PrepStatus.MultipleMatches, PrepStatus.ChooseArtwork -> StatusTone.Attention
         PrepStatus.NotFound, PrepStatus.ApiError -> StatusTone.Failure
     }
@@ -102,6 +116,7 @@ val PrepStatus.label: String
         PrepStatus.NotFound -> "Not found"
         PrepStatus.ApiError -> "API error"
         PrepStatus.Unsupported -> "Unsupported"
+        PrepStatus.SystemDisabled -> "System off"
     }
 
 /**

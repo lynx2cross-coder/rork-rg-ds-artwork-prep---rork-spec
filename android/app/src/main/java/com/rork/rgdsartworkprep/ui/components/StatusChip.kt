@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
 import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.ToggleOff
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
@@ -75,6 +76,9 @@ private fun iconFor(status: PrepStatus): ImageVector = when (status) {
     PrepStatus.NotFound -> Icons.Rounded.Cancel
     PrepStatus.ApiError -> Icons.Rounded.ErrorOutline
     PrepStatus.Unsupported -> Icons.Rounded.HelpOutline
+    // A switch, because that is literally what turned this row off and what turns it
+    // back on — not the question mark that means the app could not work something out.
+    PrepStatus.SystemDisabled -> Icons.Rounded.ToggleOff
 }
 
 /** Compact colour-coded status pill used in every preparation list row. */

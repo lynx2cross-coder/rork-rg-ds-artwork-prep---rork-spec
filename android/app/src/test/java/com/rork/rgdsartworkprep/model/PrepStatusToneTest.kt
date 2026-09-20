@@ -47,6 +47,15 @@ class PrepStatusToneTest {
         assertEquals(StatusTone.Failure, PrepStatus.NotFound.tone)
     }
 
+    /**
+     * A system the user switched off is the outcome they asked for, so it must read as
+     * ordinary rather than as something to investigate.
+     */
+    @Test
+    fun `a switched off system is neutral`() {
+        assertEquals(StatusTone.Neutral, PrepStatus.SystemDisabled.tone)
+    }
+
     @Test
     fun `every status has a tone`() {
         PrepStatus.entries.forEach { status ->
@@ -68,6 +77,17 @@ class PrepStatusToneTest {
     fun `not found labels only the genuine miss`() {
         val labelled = PrepStatus.entries.filter { it.label.equals("Not found", ignoreCase = true) }
         assertEquals(listOf(PrepStatus.NotFound), labelled)
+    }
+
+    /**
+     * "Unsupported" says the app cannot look a system up. This says it can and was
+     * told not to. Sharing a label would send the user hunting for a defect instead of
+     * the switch they own.
+     */
+    @Test
+    fun `a switched off system does not read as unsupported`() {
+        assertEquals("System off", PrepStatus.SystemDisabled.label)
+        assertTrue(PrepStatus.SystemDisabled.label != PrepStatus.Unsupported.label)
     }
 
     @Test
@@ -153,9 +173,23 @@ class PrepStatusToneTest {
             PrepStatus.AlreadyExists,
             PrepStatus.MultipleMatches,
             PrepStatus.Unsupported,
+            // Retrying would read the same setting and skip again, so the button would
+            // promise a second chance the app cannot give.
+            PrepStatus.SystemDisabled,
         ).forEach {
             assertFalse("$it must not be retryable", it.isRetryable)
         }
+    }
+
+    /** Nothing was searched for, so there is no candidate list to open. */
+    @Test
+    fun `a switched off system does not open the manual search`() {
+        assertFalse(PrepStatus.SystemDisabled.opensManualSearch)
+    }
+
+    @Test
+    fun `a switched off system is not a terminal failure`() {
+        assertFalse(PrepStatus.SystemDisabled.isTerminalFailure)
     }
 
     // endregion

@@ -104,6 +104,39 @@ class JobSettlementTest {
         assertEquals("Artwork already in place", (outcome as JobVerdict.Skip).detail)
     }
 
+    /**
+     * A system switched off in Settings settles for good.
+     *
+     * It shares the Saturn case's shape — zero work done, so no clock may have an
+     * opinion about it — and adds one of its own: the outcome was the user's
+     * instruction, so deferring it would spend the retry queue on re-reading a setting
+     * that has not changed.
+     */
+    @Test
+    fun `a system switched off in settings settles as skipped`() {
+        val outcome = verdict(
+            status = PrepStatus.SystemDisabled,
+            message = "Skipped \u2014 Sony PlayStation is switched off in Settings",
+            elapsedMillis = 0L,
+        )
+        assertTrue("a switched-off system must be Skipped, got $outcome", outcome is JobVerdict.Skip)
+        assertEquals(
+            "Skipped \u2014 Sony PlayStation is switched off in Settings",
+            (outcome as JobVerdict.Skip).detail,
+        )
+    }
+
+    /** Even under an expired budget it stays a fact about the choice, not the moment. */
+    @Test
+    fun `a switched off system is never deferred as slow`() {
+        val outcome = verdict(
+            status = PrepStatus.SystemDisabled,
+            elapsedMillis = 0L,
+            budgetExpired = true,
+        )
+        assertTrue(outcome is JobVerdict.Skip)
+    }
+
     /** Waiting on a person is not a failure and must not be retried behind them. */
     @Test
     fun `a pending user choice settles as skipped`() {

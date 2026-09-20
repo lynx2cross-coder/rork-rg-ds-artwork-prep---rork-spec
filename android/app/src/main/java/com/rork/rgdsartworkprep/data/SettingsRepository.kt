@@ -40,6 +40,21 @@ data class AppSettings(
      * "why was this slow" can be answered without it.
      */
     val includeFileNamesInReport: Boolean = false,
+    /**
+     * Systems the user has switched off for artwork lookup.
+     *
+     * Opt-outs are stored, never opt-ins, and the distinction is the whole design.
+     * Recording the enabled systems would freeze the catalog at the moment the user
+     * last touched this screen: every system added in a later release would arrive
+     * silently switched off, and an app that quietly stops looking up a console after
+     * an update is indistinguishable from a broken one. Storing the exceptions means
+     * the default is always "everything this release can scrape", no preference at all
+     * reads as today's behaviour, and a new catalog entry is on the moment it ships.
+     *
+     * Detection is untouched by this. A ROM for a disabled system is still recognised
+     * and still listed — only the artwork query is skipped.
+     */
+    val disabledSystemKeys: Set<String> = emptySet(),
 ) {
     /** ScreenScraper requires developer credentials; user credentials raise the quota. */
     val hasScreenScraperCredentials: Boolean
@@ -58,6 +73,21 @@ data class AppSettings(
     /** True when a source that can supply a cover for an identified game is available. */
     val hasArtworkFallback: Boolean
         get() = useLibretroThumbnails || hasTheGamesDbKey || hasScreenScraperCredentials
+
+    /**
+     * Whether artwork may be looked up for this system.
+     *
+     * The catalog's own [com.rork.rgdsartworkprep.model.GameSystem.scrapingEnabled] is a
+     * property of the release — whether the app knows how to address the system at all.
+     * This is a property of the user's choice. Both must agree before a query is made,
+     * and they are kept apart because only one of them can be turned back on from the
+     * Settings screen.
+     */
+    fun isSystemEnabled(systemKey: String): Boolean = systemKey !in disabledSystemKeys
+
+    /** True when every scrapable system has been switched off. */
+    fun hasAnyEnabledSystem(scrapableKeys: Collection<String>): Boolean =
+        scrapableKeys.any { it !in disabledSystemKeys }
 }
 
 /** Persists settings in SharedPreferences and exposes them as observable state. */
@@ -86,6 +116,10 @@ class SettingsRepository(context: Context) {
         useLibretroThumbnails = prefs.getBoolean(KEY_USE_LIBRETRO, true),
         detailedDiagnostics = prefs.getBoolean(KEY_DETAILED_DIAGNOSTICS, false),
         includeFileNamesInReport = prefs.getBoolean(KEY_REPORT_FILENAMES, false),
+        // Copied out deliberately: SharedPreferences hands back its own live instance
+        // and documents it as unsafe to keep or mutate, while AppSettings is a value
+        // other threads read from a StateFlow.
+        disabledSystemKeys = prefs.getStringSet(KEY_DISABLED_SYSTEMS, null)?.toSet().orEmpty(),
     )
 
     private fun write(update: AppSettings) {
@@ -104,6 +138,7 @@ class SettingsRepository(context: Context) {
             .putBoolean(KEY_USE_LIBRETRO, update.useLibretroThumbnails)
             .putBoolean(KEY_DETAILED_DIAGNOSTICS, update.detailedDiagnostics)
             .putBoolean(KEY_REPORT_FILENAMES, update.includeFileNamesInReport)
+            .putStringSet(KEY_DISABLED_SYSTEMS, update.disabledSystemKeys)
             .apply()
         _settings.value = update
     }
@@ -155,6 +190,39 @@ class SettingsRepository(context: Context) {
         write(current.copy(includeFileNamesInReport = enabled))
     }
 
+    /**
+     * Switches artwork lookup for one system on or off.
+     *
+     * Enabling removes the opt-out rather than recording an opt-in, so a system the
+     * user never touched and one they deliberately turned back on are the same state.
+     */
+    fun setSystemEnabled(systemKey: String, enabled: Boolean) {
+        val updated = if (enabled) {
+            current.disabledSystemKeys - systemKey
+        } else {
+            current.disabledSystemKeys + systemKey
+        }
+        if (updated == current.disabledSystemKeys) return
+        write(current.copy(disabledSystemKeys = updated))
+    }
+
+    /**
+     * Switches every system in [systemKeys] on or off at once.
+     *
+     * Only the keys passed in are affected: turning everything off must not record an
+     * opt-out for a system this release cannot scrape anyway, because that entry would
+     * outlive the release that produced it and silently disable the system later.
+     */
+    fun setAllSystemsEnabled(systemKeys: Collection<String>, enabled: Boolean) {
+        val updated = if (enabled) {
+            current.disabledSystemKeys - systemKeys.toSet()
+        } else {
+            current.disabledSystemKeys + systemKeys
+        }
+        if (updated == current.disabledSystemKeys) return
+        write(current.copy(disabledSystemKeys = updated))
+    }
+
     private companion object {
         const val KEY_TREE_URI = "library_tree_uri"
         const val KEY_TREE_LABEL = "library_label"
@@ -170,5 +238,6 @@ class SettingsRepository(context: Context) {
         const val KEY_USE_LIBRETRO = "use_libretro_thumbnails"
         const val KEY_DETAILED_DIAGNOSTICS = "detailed_diagnostics"
         const val KEY_REPORT_FILENAMES = "report_include_filenames"
+        const val KEY_DISABLED_SYSTEMS = "disabled_system_keys"
     }
 }

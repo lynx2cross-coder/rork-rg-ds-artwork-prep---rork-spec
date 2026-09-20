@@ -963,7 +963,15 @@ private fun buildScanSummary(state: ScrapeState, appName: String): String {
         appendLine()
         appendLine("Games in batch: ${state.total}")
         appendLine("Successfully matched: ${state.savedCount}")
-        if (state.skippedCount > 0) appendLine("Artwork already present: ${state.skippedCount}")
+        // Counted apart from the rest of the skips: "already present" was accurate when
+        // it was the only reason a game was passed over, but a switched-off system is a
+        // setting the reader owns, and folding it in would report work as done that was
+        // never attempted.
+        val alreadyPresent = state.skippedCount - state.systemDisabledCount
+        if (alreadyPresent > 0) appendLine("Artwork already present: $alreadyPresent")
+        if (state.systemDisabledCount > 0) {
+            appendLine("Skipped \u2014 system switched off: ${state.systemDisabledCount}")
+        }
         appendLine("Missing artwork: $missing")
         appendLine("Errors: $errors")
         // Listed apart from the two above: these are neither missing nor broken, they

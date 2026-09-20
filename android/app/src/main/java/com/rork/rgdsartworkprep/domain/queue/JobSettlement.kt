@@ -72,13 +72,17 @@ object JobSettlement {
         when (status) {
             PrepStatus.Downloaded, PrepStatus.Exported -> return JobVerdict.Complete(message)
 
-            // Artwork already present, a system the app does not scrape, a game no
-            // source has, or a choice waiting on the user: all facts about the game.
+            // Artwork already present, a system the app does not scrape, a system the
+            // user switched off, a game no source has, or a choice waiting on the user:
+            // all facts about the game rather than about this attempt. A switched-off
+            // system settles here for the same reason as the rest — retrying it would
+            // read the same setting and skip again, so a retry is not a second chance.
             // ChooseArtwork joins them for the same reason — automatic matching has had
             // its turn, so the row is waiting on a person and must not be retried or
             // deferred behind them.
             PrepStatus.AlreadyExists,
             PrepStatus.Unsupported,
+            PrepStatus.SystemDisabled,
             PrepStatus.NotFound,
             PrepStatus.MultipleMatches,
             PrepStatus.ChooseArtwork,
