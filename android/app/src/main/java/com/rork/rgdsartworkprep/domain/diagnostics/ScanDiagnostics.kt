@@ -55,6 +55,12 @@ class ScanDiagnostics(
         currentRomId = null
     }
 
+    /** Drops a ROM the user has ignored, so no line of the report still mentions it. */
+    fun forgetRom(romId: String) {
+        log.removeRom(romId)
+        if (currentRomId == romId) currentRomId = null
+    }
+
     fun scanStarted(discovered: Int, resumed: Boolean) {
         record(
             DiagEventType.ScanStart,

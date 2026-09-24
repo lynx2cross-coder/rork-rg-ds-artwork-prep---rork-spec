@@ -3,6 +3,8 @@ package com.rork.rgdsartworkprep
 import android.app.Application
 import android.content.Context
 import com.rork.rgdsartworkprep.data.CrashLog
+import com.rork.rgdsartworkprep.data.IgnoredFilesRepository
+import com.rork.rgdsartworkprep.data.SharedPreferencesStringSetStore
 import com.rork.rgdsartworkprep.data.LibraryStore
 import com.rork.rgdsartworkprep.data.MatchCacheRepository
 import com.rork.rgdsartworkprep.data.SafRomRepository
@@ -28,7 +30,18 @@ object AppGraph {
     private lateinit var appContext: Context
 
     val settings: SettingsRepository by lazy { SettingsRepository(appContext) }
-    val saf: SafRomRepository by lazy { SafRomRepository(appContext) }
+    /**
+     * Filenames the user has asked never to see again. Stored in the app's private
+     * data, so the list survives restarts and updates alike.
+     */
+    val ignoredFiles: IgnoredFilesRepository by lazy {
+        IgnoredFilesRepository(
+            SharedPreferencesStringSetStore(
+                appContext.getSharedPreferences(IgnoredFilesRepository.PREFS, Context.MODE_PRIVATE),
+            ),
+        )
+    }
+    val saf: SafRomRepository by lazy { SafRomRepository(appContext) { ignoredFiles.current } }
     val matchCache: MatchCacheRepository by lazy { MatchCacheRepository(appContext) }
     /**
      * Kept as its own singleton because Settings talks to it directly for credential
@@ -92,7 +105,16 @@ object AppGraph {
     }
 
     val scraper: ScrapeCoordinator by lazy {
-        ScrapeCoordinator(appContext, saf, settings, matchCache, providers, scanState, scanDiagnostics)
+        ScrapeCoordinator(
+            context = appContext,
+            saf = saf,
+            settingsRepository = settings,
+            matchCache = matchCache,
+            providers = providers,
+            stateStore = scanState,
+            diagnostics = scanDiagnostics,
+            ignoredFiles = { ignoredFiles.current },
+        )
     }
 
     fun install(context: Context) {
@@ -112,6 +134,14 @@ object AppGraph {
             // A StateFlow already conflates repeats, so each transition arrives once.
             scraper.isScanning.collect { running ->
                 if (running) ScanService.start(appContext)
+            }
+        }
+        scope.launch {
+            // One place applies the ignore list to what is already on screen, however
+            // the list changed — the scan row's action or a name typed into Settings.
+            ignoredFiles.ignored.collect { ignored ->
+                library.applyIgnored(ignored)
+                scraper.excludeIgnored(ignored)
             }
         }
     }

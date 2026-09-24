@@ -10,6 +10,11 @@ package com.rork.rgdsartworkprep.domain.queue
  * The single promise it makes is that [nextReady] never returns a job that is
  * waiting on a backoff, so a difficult game can never be the reason a healthy one
  * goes unprocessed.
+ *
+ * Every member is synchronized. The scan loop works the queue from a background
+ * thread while the UI can change it — a retry, clearing the retry queue, ignoring a
+ * file — and removing a job is a structural change that would otherwise break an
+ * iteration running on the other thread. Locking changes no decision the queue makes.
  */
 class ScanQueue(
     jobs: List<QueueJob>,
@@ -20,12 +25,16 @@ class ScanQueue(
     private val jobsById: LinkedHashMap<String, QueueJob> =
         LinkedHashMap<String, QueueJob>().apply { jobs.forEach { put(it.id, it) } }
 
-    val jobs: List<QueueJob> get() = order.mapNotNull { jobsById[it] }
+    val jobs: List<QueueJob>
+        @Synchronized get() = order.mapNotNull { jobsById[it] }
 
-    val size: Int get() = order.size
+    val size: Int
+        @Synchronized get() = order.size
 
+    @Synchronized
     fun job(id: String): QueueJob? = jobsById[id]
 
+    @Synchronized
     fun countOf(state: JobState): Int = jobsById.values.count { it.state == state }
 
     val completedCount: Int get() = countOf(JobState.Completed)
@@ -34,10 +43,12 @@ class ScanQueue(
     val failedCount: Int get() = countOf(JobState.Failed)
 
     /** Jobs that have been decided one way or another. */
-    val finishedCount: Int get() = jobsById.values.count { it.state.isFinished }
+    val finishedCount: Int
+        @Synchronized get() = jobsById.values.count { it.state.isFinished }
 
     /** True when nothing is left that could still change on its own. */
-    val isDrained: Boolean get() = jobsById.values.none { it.state.isPending }
+    val isDrained: Boolean
+        @Synchronized get() = jobsById.values.none { it.state.isPending }
 
     /**
      * The next job to work on, or null when nothing can be attempted right now.
@@ -48,6 +59,7 @@ class ScanQueue(
      * cannot hold up a fast one. Only once no [JobState.Ready] job remains does the
      * queue start serving deferred jobs whose backoff has expired.
      */
+    @Synchronized
     fun nextReady(nowMillis: Long): QueueJob? =
         firstInOrder { it.state == JobState.Ready }
             ?: firstInOrder { it.isEligible(nowMillis) }
@@ -57,6 +69,7 @@ class ScanQueue(
      *
      * The caller uses this to sleep exactly as long as needed instead of polling.
      */
+    @Synchronized
     fun nextEligibleAt(): Long? = jobsById.values
         .filter { it.state == JobState.Deferred }
         .mapNotNull { it.nextEligibleAtMillis }
@@ -71,6 +84,7 @@ class ScanQueue(
     }
 
     /** Marks a job as being worked on and counts the attempt. */
+    @Synchronized
     fun markProcessing(id: String, nowMillis: Long): QueueJob? = update(id) {
         it.copy(
             state = JobState.Processing,
@@ -80,9 +94,11 @@ class ScanQueue(
         )
     }
 
+    @Synchronized
     fun markCompleted(id: String, elapsedMillis: Long, detail: String? = null): QueueJob? =
         finish(id, JobState.Completed, elapsedMillis, detail)
 
+    @Synchronized
     fun markSkipped(id: String, elapsedMillis: Long, detail: String? = null): QueueJob? =
         finish(id, JobState.Skipped, elapsedMillis, detail)
 
@@ -93,6 +109,7 @@ class ScanQueue(
      * this is the only thing standing between a deferred job and an infinite retry
      * loop, so the attempt ceiling is enforced here rather than by the caller.
      */
+    @Synchronized
     fun markDeferred(
         id: String,
         reason: DeferReason,
@@ -121,6 +138,7 @@ class ScanQueue(
     }
 
     /** Ends a job permanently with no further attempts, whatever its history. */
+    @Synchronized
     fun markFailed(id: String, elapsedMillis: Long, detail: String? = null): QueueJob? =
         finish(id, JobState.Failed, elapsedMillis, detail)
 
@@ -147,6 +165,7 @@ class ScanQueue(
      * app looping unattended — not to stop a person trying again. Completed jobs are
      * never revived: artwork already saved must not be fetched twice.
      */
+    @Synchronized
     fun requeue(ids: Collection<String>): List<QueueJob> {
         val wanted = ids.toSet()
         return jobsById.values
@@ -165,11 +184,13 @@ class ScanQueue(
     }
 
     /** Ids of every job that could still be retried by hand. */
+    @Synchronized
     fun retryableIds(): List<String> = jobs
         .filter { it.state == JobState.Deferred || it.state == JobState.Failed }
         .map { it.id }
 
     /** Drops deferred and failed work without touching anything already decided. */
+    @Synchronized
     fun clearDeferred(): List<String> {
         val cleared = jobs.filter { it.state == JobState.Deferred || it.state == JobState.Failed }
         cleared.forEach { job ->
@@ -186,12 +207,51 @@ class ScanQueue(
      * Anything already completed or skipped keeps its outcome — cancelling a scan
      * must never rewrite work that had already succeeded.
      */
+    @Synchronized
     fun finishPending(state: JobState, detail: String): List<String> {
         val pending = jobs.filter { it.state.isPending }
         pending.forEach { job ->
             update(job.id) { it.copy(state = state, detail = detail, nextEligibleAtMillis = null) }
         }
         return pending.map { it.id }
+    }
+
+    /**
+     * Takes jobs out of the scan entirely, as if they had never been discovered.
+     *
+     * This is not a verdict. A removed job is not skipped, failed or completed: it
+     * leaves every count, is never served by [nextReady], and cannot be requeued —
+     * which is what an ignored file needs, since the user has said it does not exist.
+     *
+     * @return the ids that were actually present and removed
+     */
+    @Synchronized
+    fun remove(ids: Collection<String>): List<String> {
+        val removed = ids.filter { jobsById.remove(it) != null }
+        if (removed.isNotEmpty()) {
+            val gone = removed.toSet()
+            order.removeAll { it in gone }
+        }
+        return removed
+    }
+
+    /**
+     * Puts a job interrupted mid-flight back in line, without charging the attempt.
+     *
+     * Used when the scan loop is stopped under a job for a reason that has nothing to
+     * do with that job — the user ignored the file being processed, and the loop was
+     * restarted to drop it. Whatever else was caught in flight did not fail; it was
+     * interrupted, so it goes back to [JobState.Ready] with its attempt refunded.
+     */
+    @Synchronized
+    fun releaseProcessing(): List<String> {
+        val caught = jobs.filter { it.state == JobState.Processing }
+        caught.forEach { job ->
+            update(job.id) {
+                it.copy(state = JobState.Ready, attempts = (it.attempts - 1).coerceAtLeast(0))
+            }
+        }
+        return caught.map { it.id }
     }
 
     private fun update(id: String, transform: (QueueJob) -> QueueJob): QueueJob? {

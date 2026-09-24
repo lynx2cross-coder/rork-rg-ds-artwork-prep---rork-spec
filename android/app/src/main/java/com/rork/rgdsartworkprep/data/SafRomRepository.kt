@@ -6,7 +6,6 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
-import com.rork.rgdsartworkprep.model.GameSystem
 import com.rork.rgdsartworkprep.model.RomEntry
 import com.rork.rgdsartworkprep.model.SystemCatalog
 import java.io.File
@@ -42,13 +41,23 @@ sealed interface FileWriteResult {
 /** An artwork file that is already sitting next to a ROM, e.g. `Imgs/zelda.jpg`. */
 data class ExistingArtwork(val uri: Uri, val relativePath: String)
 
+/** Files chosen by hand in the system picker, after the ignore list has been applied. */
+data class PickedFiles(val roms: List<RomEntry>, val ignoredCount: Int)
+
 /**
  * All Storage Access Framework work: scanning the library, creating `Imgs`, writing covers,
  * merging gamelist.xml and the ready-to-copy export fallback.
  *
  * ROM files are only ever read — never renamed, moved, modified or deleted.
  */
-class SafRomRepository(private val context: Context) {
+class SafRomRepository(
+    private val context: Context,
+    /**
+     * Read at the moment each folder is listed, never cached, so a file ignored while
+     * a walk is under way is left out of the rest of that walk too.
+     */
+    private val ignoredFiles: () -> IgnoredFiles = { IgnoredFiles.NONE },
+) {
 
     private val resolver: ContentResolver get() = context.contentResolver
 
@@ -140,24 +149,17 @@ class SafRomRepository(private val context: Context) {
                 )
             }
 
-        // Disc sets scatter sheets, tracks and playlists across many files — only the
-        // file a player would actually launch becomes a game.
-        val candidateFiles = children.filter { child ->
-            !child.isDirectory &&
-                !child.name.startsWith(".") &&
-                child.extension.isNotBlank() &&
-                child.extension !in SystemCatalog.imageExtensions &&
-                child.extension in SystemCatalog.knownRomExtensions
-        }
-        val playable = SystemCatalog.playableFileNames(candidateFiles.map { it.name })
+        // Which files become games, and on which system, is decided in one pure place
+        // so the rules can be tested without a device. That is also where ignored
+        // files are dropped: after disc sets are grouped, before any system detection.
+        val accepted = ScanCandidates.select(
+            files = children.filter { !it.isDirectory },
+            fileName = { it.name },
+            folderChain = folderChain,
+            ignored = ignoredFiles(),
+        )
 
-        candidateFiles.forEach { child ->
-            val extension = child.extension
-            if (child.name !in playable) return@forEach
-
-            val system: GameSystem? = SystemCatalog.detect(child.name, folderChain)
-            if (system == null && extension in SystemCatalog.ambiguousExtensions) return@forEach
-
+        accepted.forEach { (child, system) ->
             val artwork = artworkByBase[child.baseName.lowercase()]
             output += RomEntry(
                 documentId = child.documentId,
@@ -230,6 +232,28 @@ class SafRomRepository(private val context: Context) {
     // endregion
 
     // region hand-picked ROM files
+
+    /**
+     * Converts picked documents into ROMs, leaving out every file on the ignore list.
+     *
+     * Each name is checked before [romFromPickedDocument] runs, because that is where
+     * the system is detected — an ignored file must not reach detection by this route
+     * any more than by the library walk.
+     */
+    fun romsFromPickedDocuments(pickedUris: List<Uri>, treeUri: Uri?): PickedFiles {
+        val ignored = ignoredFiles()
+        var ignoredCount = 0
+        val roms = pickedUris.mapNotNull { uri ->
+            val name = queryDisplayName(uri)
+            if (name != null && ignored.matches(name)) {
+                ignoredCount++
+                null
+            } else {
+                romFromPickedDocument(uri, treeUri)
+            }
+        }
+        return PickedFiles(roms, ignoredCount)
+    }
 
     /**
      * Converts a document picked with `ACTION_OPEN_DOCUMENT` into a [RomEntry].

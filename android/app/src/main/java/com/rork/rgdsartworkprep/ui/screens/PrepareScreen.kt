@@ -111,6 +111,7 @@ import com.rork.rgdsartworkprep.model.tone
 import com.rork.rgdsartworkprep.network.QuotaLevel
 import com.rork.rgdsartworkprep.network.QuotaSnapshot
 import com.rork.rgdsartworkprep.ui.components.EmptyState
+import com.rork.rgdsartworkprep.ui.components.IgnoreFileMenu
 import com.rork.rgdsartworkprep.ui.components.NoticeBanner
 import com.rork.rgdsartworkprep.ui.components.StatusChip
 import com.rork.rgdsartworkprep.ui.layout.LocalAppLayout
@@ -193,8 +194,10 @@ fun PrepareScreen(
     ) { uris: List<Uri> ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         val treeUri = settings.libraryTreeUri?.let(Uri::parse)
-        val roms = uris.mapNotNull { AppGraph.saf.romFromPickedDocument(it, treeUri) }
-        if (roms.isNotEmpty()) AppGraph.scraper.start(roms, rescrape = false)
+        // Ignored files are dropped before their system is detected, exactly as the
+        // library walk does.
+        val picked = AppGraph.saf.romsFromPickedDocuments(uris, treeUri)
+        if (picked.roms.isNotEmpty()) AppGraph.scraper.start(picked.roms, rescrape = false)
     }
 
     Scaffold(
@@ -494,6 +497,8 @@ private fun PrepareResults(
             PrepRow(
                 item = item,
                 onClick = { if (item.status.opensManualSearch) onPick(item) },
+                onIgnore = { AppGraph.ignoredFiles.add(item.rom.fileName) },
+                modifier = Modifier.animateItem(),
             )
             HorizontalDivider(color = HairlineBorder)
         }
@@ -1421,17 +1426,22 @@ private fun SortMenuRow(sort: PrepSort, onSelect: (PrepSort) -> Unit) {
 }
 
 @Composable
-private fun PrepRow(item: PrepItem, onClick: () -> Unit) {
+private fun PrepRow(
+    item: PrepItem,
+    onClick: () -> Unit,
+    onIgnore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val interactive = item.status.opensManualSearch
     // Row stays a comfortable target on the handheld even with the tighter padding.
-    val verticalPadding = if (LocalAppLayout.current.isShort) 11.dp else 14.dp
+    val verticalPadding = if (LocalAppLayout.current.isShort) 5.dp else 8.dp
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .then(if (interactive) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
@@ -1450,6 +1460,7 @@ private fun PrepRow(item: PrepItem, onClick: () -> Unit) {
             )
         }
         StatusChip(status = item.status)
+        IgnoreFileMenu(fileName = item.rom.fileName, onIgnore = onIgnore)
     }
 }
 

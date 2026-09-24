@@ -55,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.rgdsartworkprep.AppGraph
 import com.rork.rgdsartworkprep.model.RomEntry
 import com.rork.rgdsartworkprep.ui.components.EmptyState
+import com.rork.rgdsartworkprep.ui.components.IgnoreFileMenu
 import com.rork.rgdsartworkprep.ui.components.StatTile
 import com.rork.rgdsartworkprep.ui.layout.LocalAppLayout
 import com.rork.rgdsartworkprep.ui.theme.AnbernicOrange
@@ -275,6 +276,11 @@ fun LibraryScanScreen(
                                                 selectedIds + rom.id
                                             }
                                         },
+                                        onIgnore = {
+                                            selectedIds = selectedIds - rom.id
+                                            AppGraph.ignoredFiles.add(rom.fileName)
+                                        },
+                                        modifier = Modifier.animateItem(),
                                     )
                                     HorizontalDivider(color = HairlineBorder)
                                 }
@@ -369,11 +375,17 @@ private fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun RomRow(rom: RomEntry, checked: Boolean, onToggle: () -> Unit) {
+private fun RomRow(
+    rom: RomEntry,
+    checked: Boolean,
+    onToggle: () -> Unit,
+    onIgnore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     // The checkbox already stands 48dp tall, so the row clears the touch target either way.
     val verticalPadding = if (LocalAppLayout.current.isShort) 3.dp else 6.dp
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onToggle)
             .padding(vertical = verticalPadding),
@@ -416,5 +428,6 @@ private fun RomRow(rom: RomEntry, checked: Boolean, onToggle: () -> Unit) {
                 color = TextSecondary,
             )
         }
+        IgnoreFileMenu(fileName = rom.fileName, onIgnore = onIgnore)
     }
 }

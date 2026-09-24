@@ -8,6 +8,7 @@ import com.rork.rgdsartworkprep.data.AppSettings
 import com.rork.rgdsartworkprep.data.Checksums
 import com.rork.rgdsartworkprep.data.CrashLog
 import com.rork.rgdsartworkprep.data.FileWriteResult
+import com.rork.rgdsartworkprep.data.IgnoredFiles
 import com.rork.rgdsartworkprep.data.MatchCacheRepository
 import com.rork.rgdsartworkprep.data.RomIdentityKey
 import com.rork.rgdsartworkprep.data.RomNameNormalizer
@@ -23,6 +24,7 @@ import com.rork.rgdsartworkprep.domain.queue.JobState
 import com.rork.rgdsartworkprep.domain.queue.JobVerdict
 import com.rork.rgdsartworkprep.domain.queue.QueueJob
 import com.rork.rgdsartworkprep.domain.queue.RetryPolicy
+import com.rork.rgdsartworkprep.domain.queue.ScanExclusion
 import com.rork.rgdsartworkprep.domain.queue.ScanPhase
 import com.rork.rgdsartworkprep.domain.queue.ScanQueue
 import com.rork.rgdsartworkprep.domain.queue.ScanSnapshot
@@ -154,6 +156,12 @@ class ScrapeCoordinator(
     private val stateStore: ScanStateStore,
     val diagnostics: ScanDiagnostics,
     private val retryPolicy: RetryPolicy = RetryPolicy(),
+    /**
+     * The user's ignore list, read fresh each time it is needed. Consulted only at the
+     * edges of a run — when it starts, when it resumes, and when the user ignores a
+     * file mid-run. The pipeline itself never sees an ignored file, so it never checks.
+     */
+    private val ignoredFiles: () -> IgnoredFiles = { IgnoredFiles.NONE },
 ) {
 
     private val appContext = context.applicationContext
@@ -318,7 +326,12 @@ class ScrapeCoordinator(
 
     fun start(roms: List<RomEntry>, rescrape: Boolean) {
         cancelDrain()
-        val distinct = roms.distinctBy { it.id }
+        // The library walk and the file picker already leave ignored files out; this
+        // catches a list built before the user ignored something, such as library
+        // results still on screen from an earlier walk.
+        val distinct = ignoredFiles()
+            .partition(roms.distinctBy { it.id }) { it.fileName }
+            .kept
         val items = distinct.map { PrepItem(rom = it) }
         if (items.isEmpty()) {
             _state.value = ScrapeState()
@@ -404,7 +417,13 @@ class ScrapeCoordinator(
      */
     fun resumeIfInterrupted(): Boolean {
         if (_isScanning.value) return false
-        val snapshot = stateStore.loadResumable() ?: return false
+        // Filtered on the stored records, before any is rebuilt: rebuilding re-detects
+        // the system, and an ignored file must not reach detection by any route. A run
+        // saved before the user ignored its remaining files has nothing left to resume.
+        val snapshot = stateStore.loadResumable()
+            ?.let { ScanExclusion.filterSnapshot(it, ignoredFiles()) }
+            ?.takeIf { it.isResumable }
+            ?: return false
         val roms = snapshot.roms.map { it.toEntry() }
         if (roms.isEmpty()) return false
 
@@ -479,6 +498,94 @@ class ScrapeCoordinator(
         persist(ScanPhase.Running)
         _isScanning.value = true
         restartDrain { drain() }
+    }
+
+    /**
+     * Takes every ignored file out of the current run, as though it had never been found.
+     *
+     * Called the moment the user ignores a file. The rows leave the list and every
+     * total — not as skipped, not as failed, simply gone. A job still waiting is removed
+     * before it can be served. A job being processed at that moment is stopped: the
+     * loop is replaced, which cancels its checksum read or request at the next
+     * suspension point, and whatever else was caught in flight goes back in line with
+     * its attempt refunded.
+     *
+     * Only this run is touched. Earlier results are not rewritten, and artwork already
+     * written for a file is left where it is — this app never deletes from the library.
+     */
+    fun excludeIgnored(ignored: IgnoredFiles) {
+        if (ignored.isEmpty) return
+        val removedRoms = romsById.values.filter { ignored.matches(it.fileName) }
+        val removedIds = (
+            removedRoms.map { it.id } +
+                _state.value.items.filter { ignored.matches(it.rom.fileName) }.map { it.id }
+            ).toSet()
+        if (removedIds.isEmpty()) return
+
+        val active = queue
+        val before = active?.jobs.orEmpty()
+        val wasProcessing = before.any { it.id in removedIds && it.state == JobState.Processing }
+        val anyProcessing = before.any { it.state == JobState.Processing }
+        val wasDeferred = before.any { it.id in removedIds && it.state == JobState.Deferred }
+
+        active?.remove(removedIds)
+        removedIds.forEach { id ->
+            romsById.remove(id)
+            unreachable.remove(id)
+            deferHints.remove(id)
+            diagnostics.forgetRom(id)
+        }
+
+        _state.update { current ->
+            val pruned = ScanExclusion.prune(
+                items = current.items,
+                jobs = current.jobs,
+                processed = current.processed,
+                removedIds = removedIds,
+                id = { it.id },
+            )
+            current.copy(
+                items = pruned.items,
+                jobs = active?.jobs ?: pruned.jobs,
+                total = pruned.total,
+                processed = active?.finishedCount?.coerceAtMost(pruned.total) ?: pruned.processed,
+                currentLine = if (wasProcessing) null else current.currentLine,
+            )
+        }
+
+        val gamelistPaths = removedRoms.map { it.gamelistRomPath.lowercase() }.toSet()
+        if (gamelistPaths.isNotEmpty()) {
+            scope.launch {
+                gamelistLock.withLock {
+                    gamelistBuckets.values.forEach { bucket -> bucket.entries.keys.removeAll(gamelistPaths) }
+                }
+            }
+        }
+
+        if (active == null) return
+        if (_state.value.items.isEmpty()) {
+            // Nothing left in this run at all: end it rather than leave an empty
+            // scan spinning.
+            cancelDrain()
+            _state.value = ScrapeState()
+            stateStore.clear()
+            queue = null
+            scanId = null
+            _isScanning.value = false
+            return
+        }
+        persist(if (active.isDrained) ScanPhase.Complete else ScanPhase.Running)
+
+        // The loop is replaced only when it is working on, or waiting for, a removed
+        // file. Restarting it under an unrelated job would throw away that job's work.
+        val loopTouchesRemoved = wasProcessing || (wasDeferred && !anyProcessing)
+        if (_isScanning.value && loopTouchesRemoved) {
+            restartDrain {
+                active.releaseProcessing()
+                publish(active)
+                drain()
+            }
+        }
     }
 
     /** Empties the retry queue without touching anything already saved. */
@@ -1380,6 +1487,9 @@ class ScrapeCoordinator(
     }
 
     private suspend fun putEntry(rom: RomEntry, entry: GamelistEntry) {
+        // A file ignored while its lookup was finishing must not be written back into
+        // the game list after it was taken out of the run.
+        if (!romsById.containsKey(rom.id)) return
         // gamelist.xml belongs at the system root, even when games sit in their own folders.
         val folderId = rom.systemRootDocumentId ?: rom.parentDocumentId
         val key = folderId ?: rom.systemFolderName ?: UNSORTED_KEY
@@ -1524,8 +1634,20 @@ class ScrapeCoordinator(
         }
     }
 
+    /**
+     * Applies [transform] atomically.
+     *
+     * The scan loop writes from a background thread while the UI writes from the main
+     * one. A plain read-then-write let a scan step that read the list just before the
+     * user ignored a file write the old list back afterwards, restoring the removed
+     * row. Compare-and-set retries on the fresh value instead. Every transform here is
+     * a pure copy, so running one again is harmless.
+     */
     private inline fun MutableStateFlow<ScrapeState>.update(transform: (ScrapeState) -> ScrapeState) {
-        value = transform(value)
+        while (true) {
+            val previous = value
+            if (compareAndSet(previous, transform(previous))) return
+        }
     }
 
     private companion object {

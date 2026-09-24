@@ -113,6 +113,17 @@ class DiagnosticLog(private val capacity: Int = DEFAULT_CAPACITY) {
         droppedCount = 0
     }
 
+    /**
+     * Forgets everything recorded for one ROM.
+     *
+     * Used when the user ignores a file: an ignored file is meant to leave no trace
+     * outside the ignore list itself, and that includes the report they might share.
+     */
+    @Synchronized
+    fun removeRom(romId: String) {
+        events.removeAll { it.romId == romId }
+    }
+
     @Synchronized
     fun size(): Int = events.size
 

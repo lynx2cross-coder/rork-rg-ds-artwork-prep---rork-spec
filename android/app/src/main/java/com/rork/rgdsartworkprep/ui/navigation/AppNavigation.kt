@@ -11,6 +11,7 @@ import com.rork.rgdsartworkprep.ui.layout.rememberAppLayout
 import com.rork.rgdsartworkprep.ui.screens.ArtworkScreen
 import com.rork.rgdsartworkprep.ui.screens.DiagnosticsScreen
 import com.rork.rgdsartworkprep.ui.screens.HomeScreen
+import com.rork.rgdsartworkprep.ui.screens.IgnoredFilesScreen
 import com.rork.rgdsartworkprep.ui.screens.LibraryScanScreen
 import com.rork.rgdsartworkprep.ui.screens.PrepareScreen
 import com.rork.rgdsartworkprep.ui.screens.SettingsScreen
@@ -22,6 +23,7 @@ object Routes {
     const val ARTWORK = "artwork"
     const val SETTINGS = "settings"
     const val DIAGNOSTICS = "diagnostics"
+    const val IGNORED_FILES = "ignored-files"
 }
 
 @Composable
@@ -70,7 +72,11 @@ private fun AppNavHost(navController: NavHostController) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onOpenDiagnostics = { navController.navigate(Routes.DIAGNOSTICS) },
+                onOpenIgnoredFiles = { navController.navigate(Routes.IGNORED_FILES) },
             )
+        }
+        composable(Routes.IGNORED_FILES) {
+            IgnoredFilesScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.DIAGNOSTICS) {
             DiagnosticsScreen(onBack = { navController.popBackStack() })

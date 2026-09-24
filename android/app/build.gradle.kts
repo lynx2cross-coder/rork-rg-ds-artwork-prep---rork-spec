@@ -17,8 +17,8 @@ plugins {
  * word followed by `=` and digits, and must find the real declaration inside
  * `defaultConfig`, not a helper up here.
  */
-val declaredBuildNumber = 19
-val declaredVersionName = "1.4.0"
+val declaredBuildNumber = 20
+val declaredVersionName = "1.5.0"
 
 /**
  * Values at or above this are a packaging timestamp rather than a hand-written build
@@ -132,6 +132,18 @@ android {
         // check between identifying a ROM's system and spending anything on it, so a
         // report from this build stays comparable with a 1.3.3 one.
         //
+        // 1.5.0: MINOR, new capability. A user-managed list of exact filenames that
+        // every scan treats as absent — raised by 3DS support files (boot9.bin,
+        // boot11.bin, seeddb.bin, shared_font.bin) being picked up as games. Matching
+        // is exact and case-insensitive, never by extension: `.bin` is where real disc
+        // games live. The check sits in the library walk after disc sets are grouped
+        // and before system detection, so an ignored file is never detected, counted,
+        // hashed or looked up, and ignoring a cue sheet cannot expose its bin.
+        //
+        // The scan engine stays `queue-5`. For files not on the list, detection,
+        // scheduling, provider order, matching and request behaviour are untouched,
+        // and an empty list — every upgrading install — scans exactly as 1.4.0 did.
+        //
         // The next line MUST stay a plain integer literal. The packaging step that
         // builds the installable APK rewrites this file first, replacing the first
         // `versionCode = <digits>` it finds with a build timestamp — which is what
@@ -141,7 +153,7 @@ android {
         // already had the stamped 1789174724 installed. Android will not install a
         // lower version code over a higher one, so the RG DS rejected the package.
         // A reference compiles and tests green — it fails only on the device.
-        versionCode = 19
+        versionCode = 20
         versionName = declaredVersionName
 
         // Warn — never fail — when the literal above and declaredBuildNumber disagree.

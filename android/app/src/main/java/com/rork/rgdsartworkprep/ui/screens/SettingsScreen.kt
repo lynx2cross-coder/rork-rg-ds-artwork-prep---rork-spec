@@ -79,8 +79,13 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onOpenDiagnostics: () -> Unit) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
+    onOpenIgnoredFiles: () -> Unit,
+) {
     val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
+    val ignoredFiles by AppGraph.ignoredFiles.ignored.collectAsStateWithLifecycle()
     val layout = LocalAppLayout.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -458,6 +463,29 @@ fun SettingsScreen(onBack: () -> Unit, onOpenDiagnostics: () -> Unit) {
                         )
                     }
                 }
+            }
+
+            SectionTitle("Ignored files")
+            Text(
+                text = "Specific files, such as 3DS system files, that every scan should treat " +
+                    "as if they were not there.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+            OutlinedButton(
+                onClick = onOpenIgnoredFiles,
+                modifier = Modifier.fillMaxWidth().height(layout.buttonHeight - 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, HairlineBorder),
+            ) {
+                Text(
+                    text = when (ignoredFiles.size) {
+                        0 -> "Manage ignored files"
+                        1 -> "Manage ignored files (1)"
+                        else -> "Manage ignored files (${ignoredFiles.size})"
+                    },
+                    color = TextSecondary,
+                )
             }
         }
         val regionSection: @Composable () -> Unit = {
