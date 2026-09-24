@@ -25,6 +25,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.rgdsartworkprep.AppGraph
 import com.rork.rgdsartworkprep.data.EntryCheck
+import com.rork.rgdsartworkprep.data.IgnoredFilePresets
 import com.rork.rgdsartworkprep.ui.components.EmptyState
 import com.rork.rgdsartworkprep.ui.layout.LocalAppLayout
 import com.rork.rgdsartworkprep.ui.theme.AnbernicOrange
@@ -71,6 +73,8 @@ fun IgnoredFilesScreen(onBack: () -> Unit) {
 
     var input by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var presetNote by remember { mutableStateOf<String?>(null) }
+    val missingPreset = IgnoredFilePresets.missingFrom(ignored)
 
     val submit: () -> Unit = {
         when (val check = ignored.check(input)) {
@@ -172,6 +176,21 @@ fun IgnoredFilesScreen(onBack: () -> Unit) {
                     }
                 }
             }
+            item {
+                ThreeDsPresetCard(
+                    missing = missingPreset,
+                    note = presetNote,
+                    onAdd = {
+                        val added = AppGraph.ignoredFiles.addAll(IgnoredFilePresets.threeDsSystemFiles)
+                        val skipped = IgnoredFilePresets.threeDsSystemFiles.size - added.size
+                        presetNote = when {
+                            added.isEmpty() -> "All four were already on your list."
+                            skipped == 0 -> "Added ${added.size} files."
+                            else -> "Added ${added.size} \u2014 $skipped already on your list."
+                        }
+                    },
+                )
+            }
             if (ignored.isEmpty) {
                 item {
                     EmptyState(
@@ -214,6 +233,68 @@ fun IgnoredFilesScreen(onBack: () -> Unit) {
                         color = TextSecondary,
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The optional one-tap preset. It only ever adds ordinary entries to the user's own
+ * list; nothing is added until the button is pressed, and each name stays removable.
+ */
+@Composable
+private fun ThreeDsPresetCard(missing: List<String>, note: String?, onAdd: () -> Unit) {
+    val layout = LocalAppLayout.current
+    val allPresent = missing.isEmpty()
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = GraphiteElevated,
+        border = BorderStroke(1.dp, HairlineBorder),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Common 3DS system files",
+                style = MaterialTheme.typography.titleSmall,
+                color = TextPrimary,
+            )
+            Text(
+                text = "If your 3DS folder also holds emulator support files, they can be picked " +
+                    "up as games. This adds exactly these names to your list \u2014 nothing else, " +
+                    "and each can be removed on its own:",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+            Text(
+                text = IgnoredFilePresets.threeDsSystemFiles.joinToString("  \u00b7  "),
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = FontFamily.Monospace,
+                color = TextSecondary,
+            )
+            OutlinedButton(
+                onClick = onAdd,
+                enabled = !allPresent,
+                modifier = Modifier.fillMaxWidth().height(layout.buttonHeight - 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, if (allPresent) HairlineBorder else AnbernicOrange),
+            ) {
+                Text(
+                    text = when {
+                        allPresent -> "All 3DS system files are on your list"
+                        missing.size == IgnoredFilePresets.threeDsSystemFiles.size ->
+                            "Add common 3DS system files"
+                        else -> "Add the ${missing.size} not yet listed"
+                    },
+                    color = if (allPresent) TextSecondary else AnbernicOrange,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            note?.let {
+                Text(text = it, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
             }
         }
     }

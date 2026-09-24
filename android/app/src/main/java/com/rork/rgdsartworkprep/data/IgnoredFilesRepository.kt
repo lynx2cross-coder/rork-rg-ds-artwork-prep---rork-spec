@@ -70,6 +70,23 @@ class IgnoredFilesRepository(private val store: StringSetStore) {
         return true
     }
 
+    /**
+     * Adds several names in one write, skipping any already on the list under any
+     * casing and any repeated within [fileNames] itself.
+     *
+     * @return the names actually added, in the order given; empty when nothing changed
+     */
+    @Synchronized
+    fun addAll(fileNames: Collection<String>): List<String> {
+        val added = mutableListOf<String>()
+        val seen = current.names.mapTo(HashSet()) { IgnoredFiles.keyOf(it) }
+        fileNames.forEach { name ->
+            if (name.isNotBlank() && seen.add(IgnoredFiles.keyOf(name))) added += name
+        }
+        if (added.isNotEmpty()) save(current.names + added)
+        return added
+    }
+
     /** Removes the entry matching [fileName] under any casing. */
     @Synchronized
     fun remove(fileName: String): Boolean {
