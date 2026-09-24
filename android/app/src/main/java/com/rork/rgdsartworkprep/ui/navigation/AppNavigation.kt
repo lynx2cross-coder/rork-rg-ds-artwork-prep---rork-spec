@@ -58,6 +58,7 @@ private fun AppNavHost(navController: NavHostController) {
             LibraryScanScreen(
                 onBack = { navController.popBackStack() },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onOpenIgnoredFiles = { navController.navigate(Routes.IGNORED_FILES) },
                 onStarted = {
                     navController.navigate(Routes.PREPARE) {
                         popUpTo(Routes.HOME)

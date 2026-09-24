@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -56,6 +57,7 @@ import com.rork.rgdsartworkprep.AppGraph
 import com.rork.rgdsartworkprep.model.RomEntry
 import com.rork.rgdsartworkprep.ui.components.EmptyState
 import com.rork.rgdsartworkprep.ui.components.IgnoreFileMenu
+import com.rork.rgdsartworkprep.ui.components.InfoPill
 import com.rork.rgdsartworkprep.ui.components.StatTile
 import com.rork.rgdsartworkprep.ui.layout.LocalAppLayout
 import com.rork.rgdsartworkprep.ui.theme.AnbernicOrange
@@ -73,6 +75,7 @@ import com.rork.rgdsartworkprep.ui.theme.TextSecondary
 fun LibraryScanScreen(
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenIgnoredFiles: () -> Unit,
     onStarted: () -> Unit,
 ) {
     val library by AppGraph.library.state.collectAsStateWithLifecycle()
@@ -207,6 +210,15 @@ fun LibraryScanScreen(
                                 modifier = Modifier.weight(1f),
                             )
                         }
+                        IgnoredFilesIndicator(
+                            count = scan.ignoredCount,
+                            onClick = onOpenIgnoredFiles,
+                            modifier = Modifier.padding(
+                                start = layout.screenPadding,
+                                end = layout.screenPadding,
+                                top = if (layout.isShort) 8.dp else 10.dp,
+                            ),
+                        )
                     }
                     val filters: @Composable () -> Unit = {
                         LazyRow(
@@ -323,6 +335,31 @@ fun LibraryScanScreen(
             }
         }
     }
+}
+
+/**
+ * "N files ignored" under the scan totals, so the ignore list's effect is visible
+ * instead of files silently going missing. Hidden when the scan left nothing out.
+ * Shows only a count — names stay on the Ignored files screen, which a tap opens.
+ */
+@Composable
+private fun IgnoredFilesIndicator(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    if (count <= 0) return
+    InfoPill(
+        icon = Icons.Rounded.VisibilityOff,
+        text = ignoredFilesLabel(count, tappable = true),
+        onClick = onClick,
+        modifier = modifier,
+    )
+}
+
+/**
+ * Plain-language label for the ignored-files count, shared by the Library Scan
+ * indicator and the hand-picked files notice.
+ */
+internal fun ignoredFilesLabel(count: Int, tappable: Boolean): String {
+    val base = if (count == 1) "1 file ignored" else "$count files ignored"
+    return if (tappable) "$base \u00b7 tap to manage" else base
 }
 
 /** Primary "start scraping" action, shared by the portrait bottom bar and landscape rail. */

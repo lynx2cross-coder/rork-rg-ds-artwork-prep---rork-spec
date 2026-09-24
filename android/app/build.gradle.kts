@@ -17,8 +17,8 @@ plugins {
  * word followed by `=` and digits, and must find the real declaration inside
  * `defaultConfig`, not a helper up here.
  */
-val declaredBuildNumber = 20
-val declaredVersionName = "1.5.0"
+val declaredBuildNumber = 21
+val declaredVersionName = "1.5.1"
 
 /**
  * Values at or above this are a packaging timestamp rather than a hand-written build
@@ -144,6 +144,12 @@ android {
         // scheduling, provider order, matching and request behaviour are untouched,
         // and an empty list — every upgrading install — scans exactly as 1.4.0 did.
         //
+        // 1.5.1: PATCH, presentation only. Library Scan now shows "N files ignored"
+        // under its totals (hidden at zero; tap opens the list), and picking files by
+        // hand says how many the list removed. The walk only counts what it already
+        // excluded — which files are ignored, and where, is unchanged — so the scan
+        // engine stays `queue-5` and a report stays comparable with a 1.5.0 one.
+        //
         // The next line MUST stay a plain integer literal. The packaging step that
         // builds the installable APK rewrites this file first, replacing the first
         // `versionCode = <digits>` it finds with a build timestamp — which is what
@@ -153,7 +159,7 @@ android {
         // already had the stamped 1789174724 installed. Android will not install a
         // lower version code over a higher one, so the RG DS rejected the package.
         // A reference compiles and tests green — it fails only on the device.
-        versionCode = 20
+        versionCode = 21
         versionName = declaredVersionName
 
         // Warn — never fail — when the literal above and declaredBuildNumber disagree.

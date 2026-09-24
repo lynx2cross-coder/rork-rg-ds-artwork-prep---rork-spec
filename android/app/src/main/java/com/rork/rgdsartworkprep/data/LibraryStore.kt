@@ -82,14 +82,15 @@ class LibraryStore(
      * Drops newly ignored files from the results already on screen.
      *
      * The walk itself leaves ignored files out, but a list scanned before the user
-     * ignored something would otherwise keep showing it until the next rescan.
+     * ignored something would otherwise keep showing it until the next rescan. Each
+     * dropped file is added to the scan's ignored count, so the indicator matches what
+     * a rescan would report.
      */
     fun applyIgnored(ignored: IgnoredFiles) {
-        if (ignored.isEmpty) return
         val current = _state.value
-        val kept = current.scan.roms.filterNot { ignored.matches(it.fileName) }
-        if (kept.size == current.scan.roms.size) return
-        _state.value = current.copy(scan = current.scan.copy(roms = kept))
+        val updated = current.scan.withoutIgnored(ignored)
+        if (updated === current.scan) return
+        _state.value = current.copy(scan = updated)
     }
 
     fun romsById(ids: Set<String>): List<RomEntry> =

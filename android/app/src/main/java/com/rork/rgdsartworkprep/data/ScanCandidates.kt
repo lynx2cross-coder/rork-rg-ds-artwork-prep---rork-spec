@@ -32,6 +32,10 @@ object ScanCandidates {
      * @param fileName reads the on-disk name of one file
      * @param folderChain folder names from this folder outwards to the library root
      * @param detect injectable so tests can prove an ignored file never reaches it
+     * @param onIgnored called once for each file the ignore list removed, so the walk
+     *   can say how many it left out. Only files that would otherwise have become a
+     *   game are reported: a track hidden behind its ignored cue sheet was never a
+     *   game of its own, so ignoring one sheet counts as one file.
      */
     fun <T> select(
         files: List<T>,
@@ -39,6 +43,7 @@ object ScanCandidates {
         folderChain: List<String>,
         ignored: IgnoredFiles,
         detect: (String, List<String>) -> GameSystem? = SystemCatalog::detect,
+        onIgnored: (T) -> Unit = {},
     ): List<Accepted<T>> {
         val candidates = files.filter { file ->
             val name = fileName(file)
@@ -55,7 +60,10 @@ object ScanCandidates {
         return candidates.mapNotNull { file ->
             val name = fileName(file)
             if (name !in playable) return@mapNotNull null
-            if (ignored.matches(name)) return@mapNotNull null
+            if (ignored.matches(name)) {
+                onIgnored(file)
+                return@mapNotNull null
+            }
 
             val system = detect(name, folderChain)
             if (system == null && extensionOf(name) in SystemCatalog.ambiguousExtensions) {

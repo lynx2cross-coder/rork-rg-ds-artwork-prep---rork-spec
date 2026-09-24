@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -198,6 +199,11 @@ fun PrepareScreen(
         // library walk does.
         val picked = AppGraph.saf.romsFromPickedDocuments(uris, treeUri)
         if (picked.roms.isNotEmpty()) AppGraph.scraper.start(picked.roms, rescrape = false)
+        // Say so when the ignore list removed some of the choice, so a picked file that
+        // never appears is explained rather than looking lost.
+        if (picked.ignoredCount > 0) {
+            Toast.makeText(context, ignoredFilesLabel(picked.ignoredCount, tappable = false), Toast.LENGTH_SHORT).show()
+        }
     }
 
     Scaffold(

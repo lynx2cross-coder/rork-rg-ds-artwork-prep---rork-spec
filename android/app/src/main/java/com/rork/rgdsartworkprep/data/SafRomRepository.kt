@@ -18,12 +18,28 @@ import kotlin.coroutines.coroutineContext
 data class LibraryScan(
     val roms: List<RomEntry> = emptyList(),
     val scannedAtMillis: Long = 0L,
+    /**
+     * How many files this scan left out because they are on the ignore list. A count
+     * only — the names stay on Settings -> Ignored files, the one place they are shown.
+     */
+    val ignoredCount: Int = 0,
 ) {
     val total: Int get() = roms.size
     val withArtwork: Int get() = roms.count { it.hasArtwork }
     val missingArtwork: Int get() = roms.count { !it.hasArtwork }
     val missing: List<RomEntry> get() = roms.filter { !it.hasArtwork }
     val prepared: List<RomEntry> get() = roms.filter { it.hasArtwork }
+
+    /**
+     * This scan with every newly ignored file taken out, each one added to
+     * [ignoredCount] so the total stays what a fresh rescan would report.
+     */
+    fun withoutIgnored(ignored: IgnoredFiles): LibraryScan {
+        if (ignored.isEmpty) return this
+        val kept = roms.filterNot { ignored.matches(it.fileName) }
+        if (kept.size == roms.size) return this
+        return copy(roms = kept, ignoredCount = ignoredCount + (roms.size - kept.size))
+    }
 }
 
 /** Where a written file ended up. */
@@ -91,6 +107,7 @@ class SafRomRepository(
 
     suspend fun scanLibrary(treeUri: Uri): LibraryScan = withContext(Dispatchers.IO) {
         val roms = mutableListOf<RomEntry>()
+        var ignoredCount = 0
         try {
             val rootId = DocumentsContract.getTreeDocumentId(treeUri)
             val rootName = describeTree(treeUri).substringAfterLast('/')
@@ -103,12 +120,17 @@ class SafRomRepository(
                 systemRootFolderName = if (rootSystem != null) rootName else null,
                 subPath = null,
                 output = roms,
+                onIgnored = { ignoredCount++ },
                 depth = 0,
             )
         } catch (error: Exception) {
             Log.w(TAG, "Library scan stopped early: ${error.javaClass.simpleName}")
         }
-        LibraryScan(roms = roms.sortedBy { it.fileName.lowercase() }, scannedAtMillis = System.currentTimeMillis())
+        LibraryScan(
+            roms = roms.sortedBy { it.fileName.lowercase() },
+            scannedAtMillis = System.currentTimeMillis(),
+            ignoredCount = ignoredCount,
+        )
     }
 
     private suspend fun walk(
@@ -119,6 +141,7 @@ class SafRomRepository(
         systemRootFolderName: String?,
         subPath: String?,
         output: MutableList<RomEntry>,
+        onIgnored: () -> Unit,
         depth: Int,
     ) {
         if (depth > MAX_DEPTH) return
@@ -157,6 +180,7 @@ class SafRomRepository(
             fileName = { it.name },
             folderChain = folderChain,
             ignored = ignoredFiles(),
+            onIgnored = { onIgnored() },
         )
 
         accepted.forEach { (child, system) ->
@@ -193,6 +217,7 @@ class SafRomRepository(
                     else -> "$subPath/${dir.name}"
                 },
                 output = output,
+                onIgnored = onIgnored,
                 depth = depth + 1,
             )
         }

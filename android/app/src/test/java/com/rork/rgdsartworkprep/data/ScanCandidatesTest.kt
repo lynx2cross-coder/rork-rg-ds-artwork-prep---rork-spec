@@ -123,6 +123,50 @@ class ScanCandidatesTest {
 
     // endregion
 
+    // region ignored count shown on the scan screen
+
+    private fun ignoredIn(files: List<String>, folders: List<String>, ignored: IgnoredFiles): List<String> {
+        val reported = mutableListOf<String>()
+        ScanCandidates.select(files, { it }, folders, ignored, onIgnored = { reported += it })
+        return reported
+    }
+
+    @Test
+    fun `each ignored file is reported once`() {
+        assertEquals(
+            listOf("boot11.bin", "boot9.bin", "seeddb.bin", "shared_font.bin"),
+            ignoredIn(threeDsFolder, listOf("3DS"), support),
+        )
+    }
+
+    @Test
+    fun `nothing is reported when the list is empty or matches nothing`() {
+        assertTrue(ignoredIn(threeDsFolder, listOf("3DS"), IgnoredFiles.NONE).isEmpty())
+        assertTrue(ignoredIn(listOf("Spyro.bin"), listOf("PSX"), support).isEmpty())
+    }
+
+    /** A cue sheet hides its tracks: ignoring it removes one game, so it counts once. */
+    @Test
+    fun `an ignored cue sheet counts as one file, not one per track`() {
+        val files = listOf("Game.cue", "Game.bin", "Game (Track 02).bin")
+        assertEquals(listOf("Game.cue"), ignoredIn(files, listOf("PSX"), IgnoredFiles(listOf("Game.cue"))))
+    }
+
+    /** Files the walk never treats as ROMs are not counted as ignored. */
+    @Test
+    fun `a listed name that is not a rom candidate is not counted`() {
+        val list = IgnoredFiles(listOf("readme.txt", ".hidden.gba"))
+        assertTrue(ignoredIn(listOf("readme.txt", ".hidden.gba", "game.gba"), listOf("GBA"), list).isEmpty())
+    }
+
+    @Test
+    fun `reporting the count does not change which files are accepted`() {
+        val withCallback = ScanCandidates.select(threeDsFolder, { it }, listOf("3DS"), support, onIgnored = {})
+        assertEquals(select(threeDsFolder, listOf("3DS"), support), withCallback)
+    }
+
+    // endregion
+
     // region unchanged behaviour for files that are not ignored
 
     /**
