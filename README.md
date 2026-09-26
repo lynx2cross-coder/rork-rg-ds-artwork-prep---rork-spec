@@ -13,6 +13,8 @@ It is designed to work with existing ROM collections rather than replace your em
 - 📁 Scan a ROM folder and its system subfolders
 - 🎮 Identify supported game systems from filenames, extensions, and folder names
 - 🖼️ Search for and download game artwork
+- ⚙️ Choose which supported systems ROM Art Prep should search for artwork
+- 🚫 Ignore specific filenames so unwanted files are excluded from future scans
 - 🔎 Support alternate system names and RetroArch/Libretro folder naming
 - ✋ Provide manual artwork selection when automatic matching cannot identify a game
 - ⚡ Process ROMs one at a time with fast jobs completed immediately and slower searches handled through a queue
@@ -49,6 +51,37 @@ For example, folders such as:
 can be recognized without requiring the user to manually select the system.
 
 The app intentionally avoids overly broad manufacturer-only names such as `Nintendo`, `Sega`, or `Commodore` because those names can refer to multiple different systems.
+
+## System Selection
+
+ROM Art Prep can automatically detect the system for each file, while also allowing users to choose which supported systems should be included in artwork searches.
+
+All supported systems are enabled by default.
+
+Systems can be turned off in Settings when the user does not want ROM Art Prep to search for artwork for those systems.
+
+Disabled systems are skipped before artwork lookup and network processing.
+
+## Ignored Files
+
+ROM Art Prep allows users to exclude specific filenames from future scans.
+
+When a file is ignored, its exact filename is saved to the user's Ignored Files list. Matching is case-insensitive, but the filename must otherwise match exactly.
+
+Ignored files are excluded before system detection and do not appear in scan results or consume artwork lookup, checksum, network, or retry processing.
+
+Ignored filenames can be reviewed and removed from:
+
+**Settings → Ignored Files**
+
+For convenience, ROM Art Prep also provides an optional shortcut for adding common 3DS system files:
+
+- `boot9.bin`
+- `boot11.bin`
+- `seeddb.bin`
+- `shared_font.bin`
+
+These files are never ignored automatically. The user must explicitly choose to add them.
 
 ## Artwork Sources
 
@@ -95,23 +128,21 @@ The application uses Android's storage permissions and folder selection system s
 
 ## Installation
 
-ROM Art Prep is currently distributed as an early public test release.
+ROM Art Prep is distributed as an Android APK through the **Releases** section of this repository.
 
-Download the APK from the **Releases** section of this repository and install it on your Android device.
+Download the latest APK from the latest GitHub release and install it on your Android device.
 
-### v1.3.3
-
-For this release, a **fresh installation is recommended** rather than updating an older development build.
-
-Development builds used during testing had changing version information, so a fresh installation provides the cleanest starting point.
+ROM Art Prep can be installed as an update over an existing compatible installation. Existing app settings and folder permissions should normally be retained when updating.
 
 ## Current Status
 
-ROM Art Prep is an early public release.
+ROM Art Prep is a public Android release.
 
-It has been extensively tested against a dedicated test ROM library covering normal system folders, RetroArch-style folder names, ambiguous file extensions, unsupported systems, non-game files, and identical-file cache scenarios.
+Version 1.5.1 has been tested on a physical Anbernic RG DS in addition to automated testing.
 
-Additional testing on real-world ROM collections and Android devices is welcome.
+The application has been tested against ROM libraries covering normal system folders, RetroArch-style folder names, ambiguous file extensions, unsupported systems, non-game files, ignored files, and artwork matching scenarios.
+
+Additional testing on other Android devices and ROM collections is welcome.
 
 ## Diagnostics & Privacy
 
