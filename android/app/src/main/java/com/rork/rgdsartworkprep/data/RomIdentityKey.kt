@@ -38,12 +38,24 @@ object RomIdentityKey {
     /**
      * @param crc32 checksum of the ROM's contents, or null when it has none (see [usesChecksum])
      * @param systemKey [GameSystem.key] of the detected system, or null when undetected
+     * @param locationScope the ROM's saved-location scope. Null — the folder carried over
+     *   from a single-folder build — produces exactly the key that build wrote, so its
+     *   remembered matches survive the update. Any other location gets its own key, so a
+     *   cover chosen by hand for `SD card /Roms/GBA/Mario.gba` is never applied to the
+     *   same-named file on internal storage.
      */
-    fun of(crc32: String?, fileName: String, sizeBytes: Long, systemKey: String?): String {
+    fun of(
+        crc32: String?,
+        fileName: String,
+        sizeBytes: Long,
+        systemKey: String?,
+        locationScope: String? = null,
+    ): String {
         val scope = systemKey?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: UNKNOWN_SYSTEM
         val name = fileName.trim().lowercase()
         val fingerprint = crc32?.trim()?.uppercase()?.takeIf { it.isNotEmpty() } ?: NO_CHECKSUM
-        return "$PREFIX:$scope:$name:$sizeBytes:$fingerprint"
+        val base = "$PREFIX:$scope:$name:$sizeBytes:$fingerprint"
+        return if (locationScope.isNullOrBlank()) base else "$base@$locationScope"
     }
 
     /**

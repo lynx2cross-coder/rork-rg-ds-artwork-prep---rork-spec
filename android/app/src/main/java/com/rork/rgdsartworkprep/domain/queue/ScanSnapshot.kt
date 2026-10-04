@@ -25,7 +25,14 @@ data class RomRecord(
     val systemRootDocumentId: String? = null,
     val systemRootFolderName: String? = null,
     val subPath: String? = null,
-)
+    /** Saved location the ROM was found in; absent in snapshots from 1.5.x. */
+    val locationTreeUri: String? = null,
+    /** Identity scope, see [com.rork.rgdsartworkprep.model.RomEntry.locationScope]. */
+    val locationScope: String? = null,
+) {
+    /** The same id the live [com.rork.rgdsartworkprep.model.RomEntry] carries. */
+    val id: String get() = com.rork.rgdsartworkprep.data.RomLocations.romId(documentId, locationScope)
+}
 
 /** Why a persisted scan stopped, so a resumed one knows whether to carry on. */
 @Serializable

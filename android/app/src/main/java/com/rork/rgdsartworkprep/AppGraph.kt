@@ -7,6 +7,8 @@ import com.rork.rgdsartworkprep.data.IgnoredFilesRepository
 import com.rork.rgdsartworkprep.data.SharedPreferencesStringSetStore
 import com.rork.rgdsartworkprep.data.LibraryStore
 import com.rork.rgdsartworkprep.data.MatchCacheRepository
+import com.rork.rgdsartworkprep.data.RomLocationsRepository
+import com.rork.rgdsartworkprep.data.SharedPreferencesTextStore
 import com.rork.rgdsartworkprep.data.SafRomRepository
 import com.rork.rgdsartworkprep.data.ScanStateStore
 import com.rork.rgdsartworkprep.data.SettingsRepository
@@ -39,6 +41,19 @@ object AppGraph {
             SharedPreferencesStringSetStore(
                 appContext.getSharedPreferences(IgnoredFilesRepository.PREFS, Context.MODE_PRIVATE),
             ),
+        )
+    }
+    /**
+     * The saved ROM root folders. On first launch after updating from a single-folder
+     * build, the old library folder is carried over — its persisted permission already
+     * exists, so nothing has to be picked again.
+     */
+    val romLocations: RomLocationsRepository by lazy {
+        RomLocationsRepository(
+            store = SharedPreferencesTextStore(
+                appContext.getSharedPreferences(RomLocationsRepository.PREFS, Context.MODE_PRIVATE),
+            ),
+            legacyTreeUri = settings.current.libraryTreeUri,
         )
     }
     val saf: SafRomRepository by lazy { SafRomRepository(appContext) { ignoredFiles.current } }
@@ -80,7 +95,7 @@ object AppGraph {
             ),
         )
     }
-    val library: LibraryStore by lazy { LibraryStore(saf, settings) }
+    val library: LibraryStore by lazy { LibraryStore(saf, romLocations) }
 
     /** Survives the process being stopped, so an interrupted scan can be picked up. */
     val scanState: ScanStateStore by lazy { ScanStateStore(appContext) }

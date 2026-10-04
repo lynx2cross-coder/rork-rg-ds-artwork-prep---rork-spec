@@ -5,6 +5,7 @@ import android.os.Build
 import com.rork.rgdsartworkprep.BuildConfig
 import com.rork.rgdsartworkprep.R
 import com.rork.rgdsartworkprep.data.AppSettings
+import com.rork.rgdsartworkprep.data.RomLocation
 import com.rork.rgdsartworkprep.domain.ScrapeState
 import com.rork.rgdsartworkprep.domain.queue.JobState
 
@@ -28,8 +29,12 @@ class DiagnosticExporter(
      * @param settings read for the privacy choice and to describe the configuration.
      *   Credential *values* are never read here — only whether each source is on.
      */
-    fun export(state: ScrapeState, settings: AppSettings): String = DiagnosticReport.build(
-        environment = environment(settings),
+    fun export(
+        state: ScrapeState,
+        settings: AppSettings,
+        romLocations: List<RomLocation> = emptyList(),
+    ): String = DiagnosticReport.build(
+        environment = environment(settings, romLocations),
         summary = summarise(state),
         jobs = state.jobs,
         events = diagnostics.events(),
@@ -43,7 +48,7 @@ class DiagnosticExporter(
      * Only the *names* of enabled sources are included. A key or password would say
      * nothing about why a scan was slow, so none is read.
      */
-    private fun environment(settings: AppSettings): ReportEnvironment = ReportEnvironment(
+    private fun environment(settings: AppSettings, romLocations: List<RomLocation>): ReportEnvironment = ReportEnvironment(
         appName = appContext.getString(R.string.app_name),
         // Read from the constants compiled out of the build file rather than from the
         // packaged manifest values. A device report came back stamped
@@ -66,7 +71,7 @@ class DiagnosticExporter(
             if (settings.useLibretroThumbnails) add("Libretro thumbnails")
         },
         generatesGamelist = settings.generateGamelist,
-        writesToLibrary = settings.libraryTreeUri != null && !settings.forceExportFallback,
+        writesToLibrary = romLocations.isNotEmpty() && !settings.forceExportFallback,
     )
 
     private fun summarise(state: ScrapeState): ReportSummary {

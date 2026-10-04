@@ -9,6 +9,7 @@ import android.util.Log
 import com.rork.rgdsartworkprep.model.RomEntry
 import com.rork.rgdsartworkprep.model.SystemCatalog
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -23,6 +24,8 @@ data class LibraryScan(
      * only — the names stay on Settings -> Ignored files, the one place they are shown.
      */
     val ignoredCount: Int = 0,
+    /** How each saved location fared, in the user's order. */
+    val locations: List<LocationScanSummary> = emptyList(),
 ) {
     val total: Int get() = roms.size
     val withArtwork: Int get() = roms.count { it.hasArtwork }
@@ -36,9 +39,24 @@ data class LibraryScan(
      */
     fun withoutIgnored(ignored: IgnoredFiles): LibraryScan {
         if (ignored.isEmpty) return this
-        val kept = roms.filterNot { ignored.matches(it.fileName) }
-        if (kept.size == roms.size) return this
-        return copy(roms = kept, ignoredCount = ignoredCount + (roms.size - kept.size))
+        val removed = roms.filter { ignored.matches(it.fileName) }
+        if (removed.isEmpty()) return this
+        val removedIds = removed.mapTo(HashSet()) { it.id }
+        return copy(
+            roms = roms.filterNot { it.id in removedIds },
+            ignoredCount = ignoredCount + removed.size,
+            locations = locations.map { summary ->
+                val count = removed.count { it.locationTreeUri == summary.location.treeUri }
+                if (count == 0) {
+                    summary
+                } else {
+                    summary.copy(
+                        romCount = (summary.romCount - count).coerceAtLeast(0),
+                        ignoredCount = summary.ignoredCount + count,
+                    )
+                }
+            },
+        )
     }
 }
 
@@ -79,6 +97,11 @@ class SafRomRepository(
 
     // region permissions
 
+    /**
+     * Keeps the access Android granted for one picked folder across restarts and reboots.
+     * Falls back to read-only when write was not granted, so the folder is still scanned
+     * and its artwork goes to the export folder instead of being lost.
+     */
     fun persistTreePermission(treeUri: Uri): Boolean = try {
         resolver.takePersistableUriPermission(
             treeUri,
@@ -86,12 +109,71 @@ class SafRomRepository(
         )
         true
     } catch (error: SecurityException) {
-        Log.w(TAG, "Could not persist tree permission: ${error.javaClass.simpleName}")
+        try {
+            resolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            true
+        } catch (readError: SecurityException) {
+            Log.w(TAG, "Could not persist tree permission: ${readError.javaClass.simpleName}")
+            false
+        }
+    }
+
+    /**
+     * Gives back the persisted grant for a folder the user removed from ROM Locations.
+     *
+     * Only that exact URI's grant is released — Android keeps one per picked folder, so
+     * every other saved location, including one nested inside this folder, keeps its
+     * own. Nothing in the folder itself is touched.
+     */
+    fun releaseTreePermission(treeUri: Uri) {
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        try {
+            resolver.releasePersistableUriPermission(treeUri, flags)
+        } catch (error: SecurityException) {
+            // Held read-only, or already gone: release what is there, ignore the rest.
+            runCatching {
+                resolver.releasePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+    }
+
+    fun hasWriteAccess(treeUri: Uri): Boolean = try {
+        resolver.persistedUriPermissions.any { it.uri == treeUri && it.isWritePermission }
+    } catch (error: Exception) {
         false
     }
 
-    fun hasWriteAccess(treeUri: Uri): Boolean =
-        resolver.persistedUriPermissions.any { it.uri == treeUri && it.isWritePermission }
+    /**
+     * Whether a saved location can be used right now.
+     *
+     * The persisted grant is what survives a restart or reboot, so it is checked first;
+     * the folder is then opened, which is what catches a folder moved or deleted, or an
+     * SD card taken out, while the grant still exists.
+     */
+    suspend fun locationAccess(location: RomLocation): LocationAccess = withContext(Dispatchers.IO) {
+        val treeUri = Uri.parse(location.treeUri)
+        val grants = try {
+            resolver.persistedUriPermissions.filter { it.uri == treeUri }
+        } catch (error: Exception) {
+            emptyList()
+        }
+        val hasRead = grants.any { it.isReadPermission }
+        LocationAccess.decide(
+            hasReadGrant = hasRead,
+            hasWriteGrant = grants.any { it.isWritePermission },
+            rootReadable = hasRead && isTreeRootReadable(treeUri),
+        )
+    }
+
+    private fun isTreeRootReadable(treeUri: Uri): Boolean = try {
+        val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+        val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
+        resolver.query(rootUri, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
+            ?.use { it.moveToFirst() } ?: false
+    } catch (error: Exception) {
+        Log.w(TAG, "Saved location could not be opened: ${error.javaClass.simpleName}")
+        false
+    }
 
     /** Human-readable label such as `Download/Roms`. */
     fun describeTree(treeUri: Uri): String = try {
@@ -105,7 +187,13 @@ class SafRomRepository(
 
     // region scanning
 
-    suspend fun scanLibrary(treeUri: Uri): LibraryScan = withContext(Dispatchers.IO) {
+    /**
+     * Walks one saved ROM location exactly as the single library folder was walked,
+     * and tags every ROM found with the location it came from.
+     */
+    suspend fun scanLocation(location: RomLocation): LocationItems<RomEntry> = withContext(Dispatchers.IO) {
+        val treeUri = Uri.parse(location.treeUri)
+        val scope = RomLocations.scopeOf(location)
         val roms = mutableListOf<RomEntry>()
         var ignoredCount = 0
         try {
@@ -123,12 +211,14 @@ class SafRomRepository(
                 onIgnored = { ignoredCount++ },
                 depth = 0,
             )
+        } catch (cancellation: CancellationException) {
+            // A newer scan replaced this one; it must not report partial results.
+            throw cancellation
         } catch (error: Exception) {
-            Log.w(TAG, "Library scan stopped early: ${error.javaClass.simpleName}")
+            Log.w(TAG, "Location scan stopped early: ${error.javaClass.simpleName}")
         }
-        LibraryScan(
-            roms = roms.sortedBy { it.fileName.lowercase() },
-            scannedAtMillis = System.currentTimeMillis(),
+        LocationItems(
+            items = roms.map { it.copy(locationTreeUri = location.treeUri, locationScope = scope) },
             ignoredCount = ignoredCount,
         )
     }
@@ -265,7 +355,7 @@ class SafRomRepository(
      * the system is detected — an ignored file must not reach detection by this route
      * any more than by the library walk.
      */
-    fun romsFromPickedDocuments(pickedUris: List<Uri>, treeUri: Uri?): PickedFiles {
+    fun romsFromPickedDocuments(pickedUris: List<Uri>, locations: List<RomLocation>): PickedFiles {
         val ignored = ignoredFiles()
         var ignoredCount = 0
         val roms = pickedUris.mapNotNull { uri ->
@@ -274,7 +364,7 @@ class SafRomRepository(
                 ignoredCount++
                 null
             } else {
-                romFromPickedDocument(uri, treeUri)
+                romFromPickedDocument(uri, locations)
             }
         }
         return PickedFiles(roms, ignoredCount)
@@ -282,10 +372,10 @@ class SafRomRepository(
 
     /**
      * Converts a document picked with `ACTION_OPEN_DOCUMENT` into a [RomEntry].
-     * When the file lives inside the granted library tree, the tree-backed URI is used so
-     * artwork can be written next to it.
+     * When the file lives inside one of the saved ROM locations, that location's
+     * tree-backed URI is used so artwork can be written next to it.
      */
-    fun romFromPickedDocument(pickedUri: Uri, treeUri: Uri?): RomEntry? {
+    fun romFromPickedDocument(pickedUri: Uri, locations: List<RomLocation>): RomEntry? {
         val documentId = try {
             DocumentsContract.getDocumentId(pickedUri)
         } catch (error: Exception) {
@@ -294,11 +384,9 @@ class SafRomRepository(
         val displayName = queryDisplayName(pickedUri) ?: documentId?.substringAfterLast('/') ?: return null
         val size = querySize(pickedUri)
 
-        val treeRootId = treeUri?.let {
-            runCatching { DocumentsContract.getTreeDocumentId(it) }.getOrNull()
-        }
-        val insideTree = documentId != null && treeRootId != null &&
-            (documentId == treeRootId || documentId.startsWith("$treeRootId/"))
+        val location = RomLocations.containing(locations, pickedUri.authority, documentId)
+        val treeUri = location?.treeUri?.let(Uri::parse)
+        val insideTree = documentId != null && treeUri != null
 
         val pathSegments = documentId?.substringAfter(':', "")?.split('/')?.filter { it.isNotBlank() }.orEmpty()
         val folderChain = if (pathSegments.size >= 2) {
@@ -330,6 +418,8 @@ class SafRomRepository(
             folderChain = folderChain,
             system = SystemCatalog.detect(displayName, folderChain),
             artworkUri = null,
+            locationTreeUri = location?.treeUri,
+            locationScope = RomLocations.scopeOf(location),
         )
     }
 
@@ -388,8 +478,12 @@ class SafRomRepository(
         // Game sub-folders are mirrored so the export can be copied back in one drag.
         val exportSubFolder = rom.subPath?.let { "$it/$IMGS_DIR_NAME" } ?: IMGS_DIR_NAME
         val prepared = ArtworkImage.prepare(rom.baseName, bytes)
+        val systemFolder = rom.systemFolderName ?: rom.system?.shortName ?: "Unsorted"
+        // A scoped location exports under its own folder, so the same `GBA/Imgs/x.png`
+        // from two locations can never overwrite each other.
+        val locationFolder = RomLocations.exportPrefix(rom.locationTreeUri, rom.locationScope)
         exportForManualCopy(
-            systemFolder = rom.systemFolderName ?: rom.system?.shortName ?: "Unsorted",
+            systemFolder = locationFolder?.let { "$it/$systemFolder" } ?: systemFolder,
             subFolder = exportSubFolder,
             fileName = prepared.fileName,
             bytes = prepared.bytes,
@@ -459,7 +553,10 @@ class SafRomRepository(
 
         val folder = listOfNotNull(rom.systemFolderName, rom.subPath).joinToString("/")
         val prefix = if (folder.isEmpty()) "" else "$folder/"
-        return FileWriteResult.SavedToLibrary("$prefix$imgsName/$savedName", "$imgsName/$savedName")
+        // Names the location too, so two same-named games in two locations each show
+        // where their cover actually went.
+        val where = rom.locationTreeUri?.let { "${RomLocationLabel.of(it).full} \u00b7 " }.orEmpty()
+        return FileWriteResult.SavedToLibrary("$where$prefix$imgsName/$savedName", "$imgsName/$savedName")
     }
 
     // endregion
@@ -490,6 +587,8 @@ class SafRomRepository(
         systemFolderName: String?,
         xml: String,
         forceExport: Boolean,
+        /** Export folder for a scoped location, see [RomLocations.exportPrefix]. */
+        exportPrefix: String? = null,
     ): FileWriteResult = withContext(Dispatchers.IO) {
         val bytes = xml.toByteArray(Charsets.UTF_8)
         if (!forceExport && treeUri != null && parentDocumentId != null) {
@@ -500,8 +599,9 @@ class SafRomRepository(
                 }
             if (direct != null) return@withContext direct
         }
+        val systemFolder = systemFolderName ?: "Unsorted"
         exportForManualCopy(
-            systemFolder = systemFolderName ?: "Unsorted",
+            systemFolder = exportPrefix?.let { "$it/$systemFolder" } ?: systemFolder,
             subFolder = null,
             fileName = GAMELIST_FILE_NAME,
             bytes = bytes,

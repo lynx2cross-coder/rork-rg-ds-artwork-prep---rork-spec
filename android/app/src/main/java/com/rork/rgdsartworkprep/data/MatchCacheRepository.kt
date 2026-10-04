@@ -60,8 +60,13 @@ class MatchCacheRepository(context: Context) {
         }
     }
 
-    fun identityKey(crc32: String?, fileName: String, size: Long, systemKey: String?): String =
-        RomIdentityKey.of(crc32, fileName, size, systemKey)
+    fun identityKey(
+        crc32: String?,
+        fileName: String,
+        size: Long,
+        systemKey: String?,
+        locationScope: String? = null,
+    ): String = RomIdentityKey.of(crc32, fileName, size, systemKey, locationScope)
 
     fun lookup(key: String): String? = cache[key]
 

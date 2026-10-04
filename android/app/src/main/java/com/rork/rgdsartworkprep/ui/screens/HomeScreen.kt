@@ -44,25 +44,27 @@ fun HomeScreen(
     onArtwork: () -> Unit,
     onSettings: () -> Unit,
 ) {
-    val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
+    val locations by AppGraph.romLocations.locations.collectAsStateWithLifecycle()
     val library by AppGraph.library.state.collectAsStateWithLifecycle()
     val layout = LocalAppLayout.current
 
-    LaunchedEffect(settings.libraryTreeUri) {
-        if (settings.libraryTreeUri != null) AppGraph.library.refresh()
+    LaunchedEffect(locations) {
+        if (locations.isNotEmpty()) AppGraph.library.refresh()
     }
 
-    val hasLibrary = settings.libraryTreeUri != null
+    val hasLibrary = locations.isNotEmpty()
     val summary = when {
-        !hasLibrary -> "No ROM library selected — open Settings to choose one"
-        library.isScanning -> "Scanning ${settings.libraryLabel ?: "library"}…"
+        !hasLibrary -> "No ROM location yet — open Settings to add one"
+        library.isScanning -> scanProgressLabel(library.progress, locations.size)
         library.error != null -> library.error.orEmpty()
         library.hasScanned -> buildString {
-            append(settings.libraryLabel ?: "Selected folder")
+            append(locationsLabel(locations))
             append(" • ${library.scan.total} ROMs")
             append(" • ${library.scan.missingArtwork} missing artwork")
+            val unavailable = library.scan.locations.count { !it.access.isScannable }
+            if (unavailable > 0) append(" • $unavailable unavailable")
         }
-        else -> settings.libraryLabel ?: "Selected folder"
+        else -> locationsLabel(locations)
     }
 
     Scaffold { innerPadding ->

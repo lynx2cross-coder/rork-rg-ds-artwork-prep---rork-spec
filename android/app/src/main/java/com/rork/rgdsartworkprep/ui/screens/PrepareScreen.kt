@@ -194,10 +194,10 @@ fun PrepareScreen(
         contract = ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris: List<Uri> ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        val treeUri = settings.libraryTreeUri?.let(Uri::parse)
         // Ignored files are dropped before their system is detected, exactly as the
-        // library walk does.
-        val picked = AppGraph.saf.romsFromPickedDocuments(uris, treeUri)
+        // library walk does. A picked file inside any saved location is written back
+        // through that location.
+        val picked = AppGraph.saf.romsFromPickedDocuments(uris, AppGraph.romLocations.current)
         if (picked.roms.isNotEmpty()) AppGraph.scraper.start(picked.roms, rescrape = false)
         // Say so when the ignore list removed some of the choice, so a picked file that
         // never appears is explained rather than looking lost.

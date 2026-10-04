@@ -190,7 +190,7 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
 
 private fun buildReport(context: Context): String =
     DiagnosticExporter(context, AppGraph.scanDiagnostics)
-        .export(AppGraph.scraper.state.value, AppGraph.settings.current)
+        .export(AppGraph.scraper.state.value, AppGraph.settings.current, AppGraph.romLocations.current)
 
 /** Hands the report to Android's share sheet — no computer or ADB involved. */
 private fun shareDiagnosticReport(context: Context, report: String) {

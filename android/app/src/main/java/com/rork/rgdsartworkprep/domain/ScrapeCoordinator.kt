@@ -11,6 +11,7 @@ import com.rork.rgdsartworkprep.data.FileWriteResult
 import com.rork.rgdsartworkprep.data.IgnoredFiles
 import com.rork.rgdsartworkprep.data.MatchCacheRepository
 import com.rork.rgdsartworkprep.data.RomIdentityKey
+import com.rork.rgdsartworkprep.data.RomLocations
 import com.rork.rgdsartworkprep.data.RomNameNormalizer
 import com.rork.rgdsartworkprep.data.SafRomRepository
 import com.rork.rgdsartworkprep.data.ScanStateStore
@@ -30,6 +31,7 @@ import com.rork.rgdsartworkprep.domain.queue.ScanQueue
 import com.rork.rgdsartworkprep.domain.queue.ScanSnapshot
 import com.rork.rgdsartworkprep.domain.queue.toEntry
 import com.rork.rgdsartworkprep.domain.queue.toRecord
+import com.rork.rgdsartworkprep.domain.queue.withLegacyLocations
 import com.rork.rgdsartworkprep.model.GameCandidate
 import com.rork.rgdsartworkprep.model.PrepItem
 import com.rork.rgdsartworkprep.model.PrepStatus
@@ -304,6 +306,9 @@ class ScrapeCoordinator(
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
 
     private data class GamelistBucket(
+        /** The saved location this gamelist.xml is written into. */
+        val locationTreeUri: String?,
+        val locationScope: String?,
         val parentDocumentId: String?,
         val systemFolderName: String?,
         val entries: LinkedHashMap<String, GamelistEntry> = linkedMapOf(),
@@ -422,6 +427,7 @@ class ScrapeCoordinator(
         // saved before the user ignored its remaining files has nothing left to resume.
         val snapshot = stateStore.loadResumable()
             ?.let { ScanExclusion.filterSnapshot(it, ignoredFiles()) }
+            ?.withLegacyLocations()
             ?.takeIf { it.isResumable }
             ?: return false
         val roms = snapshot.roms.map { it.toEntry() }
@@ -771,7 +777,8 @@ class ScrapeCoordinator(
         diagnostics.romStarted(queued.id, rom.fileName, rom.system?.key, attempt)
         publish(active)
 
-        val treeUri = settingsRepository.current.libraryTreeUri?.let(Uri::parse)
+        // Each ROM is read and written through the saved location it was found in.
+        val treeUri = rom.locationTreeUri?.let(Uri::parse)
         val budget = JobBudget(startedAt, retryPolicy.jobBudgetMillis)
 
         // The ordinary bound is the budget, applied at checkpoints inside the pipeline
@@ -1041,7 +1048,7 @@ class ScrapeCoordinator(
             null
         }
         matchCache.remember(
-            matchCache.identityKey(crc, rom.fileName, rom.sizeBytes, rom.system?.key),
+            matchCache.identityKey(crc, rom.fileName, rom.sizeBytes, rom.system?.key, rom.locationScope),
             RememberedMatch(candidate.provider, candidate.gameId).serialize(),
         )
         val cover = candidate.coverUrl
@@ -1156,7 +1163,7 @@ class ScrapeCoordinator(
         // game nothing and hands the slot to the next one immediately.
         if (budgetExhausted(id, budget, "identifying")) return null
 
-        val identityKey = matchCache.identityKey(crc, rom.fileName, rom.sizeBytes, system.key)
+        val identityKey = matchCache.identityKey(crc, rom.fileName, rom.sizeBytes, system.key, rom.locationScope)
         val searchTitle = RomNameNormalizer.searchTitle(rom.fileName, rom.folderChain)
         val titleKey = "${system.key}|${RomNameNormalizer.comparisonKey(searchTitle)}"
 
@@ -1394,10 +1401,11 @@ class ScrapeCoordinator(
         overwrite: Boolean,
         settingsSnapshot: AppSettings,
     ): FileWriteResult {
-        val treeUri = settingsSnapshot.libraryTreeUri?.let(Uri::parse)
-        val writable = treeUri != null && saf.hasWriteAccess(treeUri)
+        // The cover goes into the ROM's own location, never into another saved one —
+        // two same-named games in two locations each get their own file.
+        val tree = RomLocations.outputTree(rom.locationTreeUri) { saf.hasWriteAccess(Uri.parse(it)) }
         return saf.saveArtwork(
-            treeUri = if (writable) treeUri else null,
+            treeUri = tree?.let(Uri::parse),
             rom = rom,
             bytes = bytes,
             overwrite = overwrite,
@@ -1492,10 +1500,14 @@ class ScrapeCoordinator(
         if (!romsById.containsKey(rom.id)) return
         // gamelist.xml belongs at the system root, even when games sit in their own folders.
         val folderId = rom.systemRootDocumentId ?: rom.parentDocumentId
-        val key = folderId ?: rom.systemFolderName ?: UNSORTED_KEY
+        // Keyed by location as well as folder: a `GBA` folder in each of two locations
+        // gets its own gamelist.xml, written into its own folder.
+        val key = RomLocations.gamelistBucketKey(rom.locationTreeUri, folderId, rom.systemFolderName)
         gamelistLock.withLock {
             val bucket = gamelistBuckets.getOrPut(key) {
                 GamelistBucket(
+                    locationTreeUri = rom.locationTreeUri,
+                    locationScope = rom.locationScope,
                     parentDocumentId = folderId,
                     systemFolderName = rom.systemFolderName ?: rom.system?.shortName,
                 )
@@ -1511,16 +1523,14 @@ class ScrapeCoordinator(
 
         _state.update { it.copy(currentLine = "Writing gamelist.xml…") }
 
-        val treeUri = settings.libraryTreeUri?.let(Uri::parse)
-        val writable = treeUri != null && saf.hasWriteAccess(treeUri)
-        val effectiveTree = if (writable) treeUri else null
-
         var savedInLibrary = 0
         var exported = 0
         var failed = 0
 
         buckets.forEach { bucket ->
             if (bucket.entries.isEmpty()) return@forEach
+            val effectiveTree = RomLocations.outputTree(bucket.locationTreeUri) { saf.hasWriteAccess(Uri.parse(it)) }
+                ?.let(Uri::parse)
             try {
                 val existingXml = if (effectiveTree != null && bucket.parentDocumentId != null) {
                     saf.readGamelist(effectiveTree, bucket.parentDocumentId)
@@ -1535,6 +1545,7 @@ class ScrapeCoordinator(
                         systemFolderName = bucket.systemFolderName,
                         xml = xml,
                         forceExport = settings.forceExportFallback,
+                        exportPrefix = RomLocations.exportPrefix(bucket.locationTreeUri, bucket.locationScope),
                     )
                 ) {
                     is FileWriteResult.SavedToLibrary -> savedInLibrary++
@@ -1586,8 +1597,10 @@ class ScrapeCoordinator(
             ScanSnapshot(
                 scanId = id,
                 phase = phase,
-                sourceTreeUri = settings.libraryTreeUri,
-                sourceLabel = settings.libraryLabel,
+                // Each ROM record carries its own location; these describe the run.
+                sourceTreeUri = romsById.values.firstOrNull()?.locationTreeUri,
+                sourceLabel = romsById.values.mapNotNull { it.locationTreeUri }.distinct().size
+                    .let { if (it > 1) "$it ROM locations" else null },
                 rescrape = rescrapeRun,
                 startedAtMillis = scanStartedAtWallMillis,
                 endedAtMillis = if (phase == ScanPhase.Running) null else System.currentTimeMillis(),

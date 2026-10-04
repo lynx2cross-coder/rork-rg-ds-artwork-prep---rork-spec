@@ -60,7 +60,7 @@ object ScanExclusion {
         if (ignored.isEmpty) return snapshot
         val roms = snapshot.roms.filterNot { ignored.matches(it.fileName) }
         if (roms.size == snapshot.roms.size) return snapshot
-        val keptIds = roms.mapTo(HashSet()) { it.documentId }
+        val keptIds = roms.mapTo(HashSet()) { it.id }
         return snapshot.copy(
             roms = roms,
             jobs = snapshot.jobs.filter { it.id in keptIds && !ignored.matches(it.fileName) },

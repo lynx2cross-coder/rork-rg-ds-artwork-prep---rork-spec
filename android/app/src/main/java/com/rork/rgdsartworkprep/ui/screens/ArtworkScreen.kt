@@ -53,12 +53,12 @@ import com.rork.rgdsartworkprep.ui.theme.TextSecondary
 @Composable
 fun ArtworkScreen(onBack: () -> Unit) {
     val library by AppGraph.library.state.collectAsStateWithLifecycle()
-    val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
+    val locations by AppGraph.romLocations.locations.collectAsStateWithLifecycle()
     val layout = LocalAppLayout.current
     val exportedCount = remember(library.scan.scannedAtMillis) { AppGraph.saf.exportedFileCount() }
 
-    LaunchedEffect(settings.libraryTreeUri) {
-        if (settings.libraryTreeUri != null) AppGraph.library.refresh()
+    LaunchedEffect(locations) {
+        if (locations.isNotEmpty()) AppGraph.library.refresh()
     }
 
     val prepared = library.scan.prepared

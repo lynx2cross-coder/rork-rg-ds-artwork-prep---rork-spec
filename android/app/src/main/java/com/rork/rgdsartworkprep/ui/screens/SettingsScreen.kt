@@ -110,19 +110,6 @@ fun SettingsScreen(
     var savedNotice by remember { mutableStateOf(false) }
     var cacheSize by remember { mutableStateOf(AppGraph.matchCache.size) }
 
-    val folderPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree(),
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        AppGraph.saf.persistTreePermission(uri)
-        AppGraph.settings.setLibrary(uri.toString(), AppGraph.saf.describeTree(uri))
-        AppGraph.library.clear()
-        AppGraph.library.refresh(force = true)
-    }
-
-    val treeUri = settings.libraryTreeUri?.let(Uri::parse)
-    val writable = treeUri != null && AppGraph.saf.hasWriteAccess(treeUri)
-
     Scaffold(
         containerColor = Graphite,
         topBar = {
@@ -142,37 +129,7 @@ fun SettingsScreen(
         },
     ) { innerPadding ->
         val librarySection: @Composable () -> Unit = {
-            SectionTitle("ROM library")
-            InfoPill(
-                icon = Icons.Rounded.Folder,
-                text = settings.libraryLabel ?: "No folder selected",
-                tint = if (settings.libraryLabel != null) StatusGreen else AnbernicOrange,
-            )
-            Text(
-                text = if (writable) {
-                    "Read and write access granted. Artwork is saved straight into the library."
-                } else if (treeUri != null) {
-                    "Read-only access. Artwork will go to the ready-to-copy export folder instead."
-                } else {
-                    "Pick the folder that holds your system folders, for example Download/Roms."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-            )
-            Button(
-                onClick = { folderPicker.launch(null) },
-                modifier = Modifier.fillMaxWidth().height(layout.buttonHeight),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AnbernicOrange,
-                    contentColor = Ink,
-                ),
-            ) {
-                Text(
-                    text = if (settings.libraryTreeUri == null) "Select ROM Library" else "Change folder",
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
+            RomLocationsSection()
         }
         val sourcesSection: @Composable () -> Unit = {
             SectionTitle("Artwork sources")

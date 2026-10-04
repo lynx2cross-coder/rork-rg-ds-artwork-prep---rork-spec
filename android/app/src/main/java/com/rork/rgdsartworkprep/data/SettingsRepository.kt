@@ -8,6 +8,11 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** Everything the user configures once and the app then remembers. */
 data class AppSettings(
+    /**
+     * The single library folder builds before 1.6.0 stored. Read once, to carry it into
+     * [RomLocationsRepository] on the first launch after updating; nothing else reads
+     * it. Kept — never cleared — so a downgrade still finds its folder.
+     */
     val libraryTreeUri: String? = null,
     val libraryLabel: String? = null,
     val devId: String = "",
@@ -141,10 +146,6 @@ class SettingsRepository(context: Context) {
             .putStringSet(KEY_DISABLED_SYSTEMS, update.disabledSystemKeys)
             .apply()
         _settings.value = update
-    }
-
-    fun setLibrary(treeUri: String, label: String) {
-        write(current.copy(libraryTreeUri = treeUri, libraryLabel = label))
     }
 
     fun setCredentials(devId: String, devPassword: String, userId: String, userPassword: String) {

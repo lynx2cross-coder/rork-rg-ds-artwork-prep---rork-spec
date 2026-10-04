@@ -20,7 +20,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.FolderOff
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Button
@@ -54,6 +56,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.rgdsartworkprep.AppGraph
+import com.rork.rgdsartworkprep.data.LocationScanSummary
+import com.rork.rgdsartworkprep.data.RomLocationLabel
 import com.rork.rgdsartworkprep.model.RomEntry
 import com.rork.rgdsartworkprep.ui.components.EmptyState
 import com.rork.rgdsartworkprep.ui.components.IgnoreFileMenu
@@ -65,6 +69,7 @@ import com.rork.rgdsartworkprep.ui.theme.Graphite
 import com.rork.rgdsartworkprep.ui.theme.GraphiteElevated
 import com.rork.rgdsartworkprep.ui.theme.HairlineBorder
 import com.rork.rgdsartworkprep.ui.theme.Ink
+import com.rork.rgdsartworkprep.ui.theme.StatusAmber
 import com.rork.rgdsartworkprep.ui.theme.StatusGreen
 import com.rork.rgdsartworkprep.ui.theme.StatusRed
 import com.rork.rgdsartworkprep.ui.theme.TextPrimary
@@ -79,15 +84,16 @@ fun LibraryScanScreen(
     onStarted: () -> Unit,
 ) {
     val library by AppGraph.library.state.collectAsStateWithLifecycle()
-    val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
+    val locations by AppGraph.romLocations.locations.collectAsStateWithLifecycle()
     val layout = LocalAppLayout.current
+    val hasLocations = locations.isNotEmpty()
 
     var showAll by rememberSaveable { mutableStateOf(false) }
     var systemFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
 
-    LaunchedEffect(settings.libraryTreeUri) {
-        if (settings.libraryTreeUri != null) AppGraph.library.refresh()
+    LaunchedEffect(locations) {
+        if (locations.isNotEmpty()) AppGraph.library.refresh()
     }
 
     val scan = library.scan
@@ -129,7 +135,7 @@ fun LibraryScanScreen(
         bottomBar = {
             // Landscape puts this action at the foot of the left rail instead, so the
             // ROM list keeps the full height of the handheld screen.
-            if (settings.libraryTreeUri != null && scan.total > 0 && !layout.isSplit) {
+            if (hasLocations && scan.total > 0 && !layout.isSplit) {
                 Surface(color = Graphite) {
                     ScrapeActionButton(
                         label = actionLabel,
@@ -148,10 +154,11 @@ fun LibraryScanScreen(
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             when {
-                settings.libraryTreeUri == null -> EmptyState(
+                !hasLocations -> EmptyState(
                     icon = Icons.Rounded.FolderOff,
-                    title = "No ROM library selected",
-                    description = "Choose your ROM folder in Settings — for example Download/Roms.",
+                    title = "No ROM location yet",
+                    description = "Add your ROM folders in Settings → ROM Locations — internal " +
+                        "storage and SD card can both be added.",
                     modifier = Modifier.clickable(onClick = onOpenSettings),
                 )
 
@@ -162,18 +169,34 @@ fun LibraryScanScreen(
                 ) {
                     CircularProgressIndicator(color = AnbernicOrange)
                     Text(
-                        text = "Scanning your library…",
+                        text = scanProgressLabel(library.progress, locations.size),
                         modifier = Modifier.padding(top = 16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary,
                     )
+                    library.progress?.let { progress ->
+                        Text(
+                            text = progress.location.label.full,
+                            modifier = Modifier.padding(top = 4.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                        )
+                    }
                 }
 
-                library.error != null -> EmptyState(
-                    icon = Icons.Rounded.FolderOff,
-                    title = "Library unreadable",
-                    description = library.error.orEmpty(),
-                )
+                library.error != null -> Column {
+                    EmptyState(
+                        icon = Icons.Rounded.FolderOff,
+                        title = "ROM locations unreadable",
+                        description = library.error.orEmpty(),
+                        modifier = Modifier.clickable(onClick = onOpenSettings),
+                    )
+                    LocationSummaries(
+                        summaries = scan.locations,
+                        onOpenSettings = onOpenSettings,
+                        modifier = Modifier.padding(horizontal = layout.screenPadding),
+                    )
+                }
 
                 else -> {
                     val startScrape: () -> Unit = {
@@ -280,6 +303,7 @@ fun LibraryScanScreen(
                                 items(visible, key = { it.id }) { rom ->
                                     RomRow(
                                         rom = rom,
+                                        showLocation = locations.size > 1,
                                         checked = rom.id in selectedIds,
                                         onToggle = {
                                             selectedIds = if (rom.id in selectedIds) {
@@ -354,6 +378,71 @@ private fun IgnoredFilesIndicator(count: Int, onClick: () -> Unit, modifier: Mod
 }
 
 /**
+ * One line per saved location under the scan totals — how many games each held, or
+ * why it was not scanned. Shown only when there is more than one location or one
+ * could not be read, so a single-folder library looks exactly as it always did.
+ */
+@Composable
+private fun LocationSummaries(
+    summaries: List<LocationScanSummary>,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (summaries.size <= 1 && summaries.all { it.scanned }) return
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = GraphiteElevated,
+        border = BorderStroke(1.dp, HairlineBorder),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            summaries.forEach { summary ->
+                val ok = summary.scanned
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (ok) Modifier else Modifier.clickable(onClick = onOpenSettings)),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = if (ok) Icons.Rounded.CheckCircle else Icons.Rounded.WarningAmber,
+                        contentDescription = null,
+                        tint = if (ok) StatusGreen else StatusAmber,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = summary.location.label.full,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = locationSummaryLabel(summary),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (ok) TextSecondary else StatusAmber,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Short status for one location in the scan summary. */
+internal fun locationSummaryLabel(summary: LocationScanSummary): String = when {
+    summary.failed -> "could not be read"
+    !summary.access.isScannable -> "unavailable"
+    summary.romCount == 1 -> "1 game"
+    else -> "${summary.romCount} games"
+}
+
+/**
  * Plain-language label for the ignored-files count, shared by the Library Scan
  * indicator and the hand-picked files notice.
  */
@@ -414,6 +503,8 @@ private fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun RomRow(
     rom: RomEntry,
+    /** With several saved locations, names the one this file is in, so two same-named games can be told apart. */
+    showLocation: Boolean,
     checked: Boolean,
     onToggle: () -> Unit,
     onIgnore: () -> Unit,
@@ -446,6 +537,16 @@ private fun RomRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            val where = rom.locationTreeUri?.takeIf { showLocation }?.let { RomLocationLabel.of(it).full }
+            if (where != null) {
+                Text(
+                    text = where,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             if (rom.hasArtwork) {
                 Text(
                     text = "Artwork present",

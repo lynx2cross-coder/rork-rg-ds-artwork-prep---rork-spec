@@ -1,6 +1,7 @@
 package com.rork.rgdsartworkprep.model
 
 import android.net.Uri
+import com.rork.rgdsartworkprep.data.RomLocations
 
 /** A ROM file discovered inside the user-selected library tree (or hand-picked via SAF). */
 data class RomEntry(
@@ -25,7 +26,26 @@ data class RomEntry(
      * directly in the system folder.
      */
     val subPath: String? = null,
+    /**
+     * The saved ROM location this file was found in — the tree whose permission is used
+     * to read it and to write its artwork and gamelist.xml. Null for a file picked by
+     * hand from outside every saved location.
+     */
+    val locationTreeUri: String? = null,
+    /**
+     * Keeps this ROM's identity apart from a same-named file in another location. Null
+     * for the folder carried over from a single-folder build (and for the first folder
+     * of a fresh install), whose ROMs keep exactly the identity they always had.
+     */
+    val locationScope: String? = null,
 ) {
+    /**
+     * Stable identity of this file within the app. Two locations can hold the same
+     * filename — and on a provider that does not prefix document ids with the volume,
+     * even the same document id — so a scoped location's ROMs carry their scope.
+     */
+    val id: String = RomLocations.romId(documentId, locationScope)
+
     /** Filename without its extension — artwork must be saved under exactly this name. */
     val baseName: String get() = fileName.substringBeforeLast('.', fileName)
 
@@ -34,8 +54,6 @@ data class RomEntry(
     val systemFolderName: String? get() = systemRootFolderName ?: folderChain.firstOrNull()
 
     val hasArtwork: Boolean get() = artworkUri != null
-
-    val id: String get() = documentId
 
     /** Path used inside gamelist.xml, relative to the system folder. */
     val gamelistRomPath: String get() = subPath?.let { "$it/$fileName" } ?: fileName

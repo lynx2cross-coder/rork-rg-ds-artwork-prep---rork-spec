@@ -1,6 +1,5 @@
 package com.rork.rgdsartworkprep.data
 
-import android.net.Uri
 import android.util.Log
 import com.rork.rgdsartworkprep.model.GameSystem
 import com.rork.rgdsartworkprep.model.RomEntry
@@ -12,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class LibraryState(
@@ -19,6 +19,8 @@ data class LibraryState(
     val isScanning: Boolean = false,
     val hasScanned: Boolean = false,
     val error: String? = null,
+    /** Which saved location is being walked right now, for "Scanning 2 of 3 locations". */
+    val progress: MultiLocationScan.Progress? = null,
 ) {
     /** Distinct system tags present in the library, for the filter chips. */
     val systemsPresent: List<GameSystem>
@@ -28,7 +30,7 @@ data class LibraryState(
 /** Shared, app-wide library scan results so Home, Library and Artwork agree. */
 class LibraryStore(
     private val saf: SafRomRepository,
-    private val settings: SettingsRepository,
+    private val locations: RomLocationsRepository,
 ) {
     /** A scan that blows up shows an empty state — it never takes the app down. */
     private val crashGuard = CoroutineExceptionHandler { _, error ->
@@ -36,7 +38,7 @@ class LibraryStore(
         _state.value = LibraryState(
             isScanning = false,
             hasScanned = false,
-            error = "Could not read the library folder. Re-select it in Settings.",
+            error = "Could not read your ROM locations. Check them in Settings.",
         )
     }
 
@@ -47,27 +49,38 @@ class LibraryStore(
 
     private var job: Job? = null
 
+    /** Scans every saved ROM location and combines what they hold. */
     fun refresh(force: Boolean = false) {
-        val treeUriString = settings.current.libraryTreeUri
-        if (treeUriString == null) {
+        val saved = locations.current
+        if (saved.isEmpty()) {
+            job?.cancel()
             _state.value = LibraryState(error = null, hasScanned = false)
             return
         }
         if (!force && (_state.value.isScanning || _state.value.hasScanned)) return
         job?.cancel()
-        _state.value = _state.value.copy(isScanning = true, error = null)
+        _state.value = _state.value.copy(isScanning = true, error = null, progress = null)
         job = scope.launch {
-            val result = runCatching { saf.scanLibrary(Uri.parse(treeUriString)) }
-            _state.value = result.fold(
-                onSuccess = { scan ->
-                    LibraryState(scan = scan, isScanning = false, hasScanned = true)
-                },
-                onFailure = {
-                    LibraryState(
-                        isScanning = false,
-                        hasScanned = false,
-                        error = "Could not read the library folder. Re-select it in Settings.",
-                    )
+            val result = MultiLocationScan.run(
+                locations = saved,
+                access = { saf.locationAccess(it) },
+                scan = { saf.scanLocation(it) },
+                fileKey = { location, rom -> RomLocations.fileKey(location, rom.documentId) },
+                onProgress = { progress -> _state.update { it.copy(progress = progress) } },
+            )
+            _state.value = LibraryState(
+                scan = LibraryScan(
+                    roms = result.items.sortedBy { it.fileName.lowercase() },
+                    scannedAtMillis = System.currentTimeMillis(),
+                    ignoredCount = result.ignoredCount,
+                    locations = result.summaries,
+                ),
+                isScanning = false,
+                hasScanned = true,
+                error = if (result.anyScanned) {
+                    null
+                } else {
+                    "None of your ROM locations can be read right now. Check them in Settings."
                 },
             )
         }

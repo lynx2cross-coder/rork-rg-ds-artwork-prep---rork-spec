@@ -17,8 +17,8 @@ plugins {
  * word followed by `=` and digits, and must find the real declaration inside
  * `defaultConfig`, not a helper up here.
  */
-val declaredBuildNumber = 21
-val declaredVersionName = "1.5.1"
+val declaredBuildNumber = 22
+val declaredVersionName = "1.6.0"
 
 /**
  * Values at or above this are a packaging timestamp rather than a hand-written build
@@ -150,6 +150,16 @@ android {
         // excluded — which files are ignored, and where, is unchanged — so the scan
         // engine stays `queue-5` and a report stays comparable with a 1.5.0 one.
         //
+        // 1.6.0: MINOR, new capability. The single library folder becomes a saved list
+        // of ROM Locations (internal storage and SD card side by side), each with its
+        // own persisted folder permission and an availability status. Every location is
+        // walked with the unchanged walk; each ROM remembers the location it came from,
+        // and its artwork and gamelist.xml are written back through that location only.
+        // The old folder is migrated once and keeps its exact ROM identity, so remembered
+        // matches and the export layout survive the update. The scan engine stays
+        // `queue-5`: per ROM, detection, scheduling, provider order and matching are
+        // untouched.
+        //
         // The next line MUST stay a plain integer literal. The packaging step that
         // builds the installable APK rewrites this file first, replacing the first
         // `versionCode = <digits>` it finds with a build timestamp — which is what
@@ -159,7 +169,7 @@ android {
         // already had the stamped 1789174724 installed. Android will not install a
         // lower version code over a higher one, so the RG DS rejected the package.
         // A reference compiles and tests green — it fails only on the device.
-        versionCode = 21
+        versionCode = 22
         versionName = declaredVersionName
 
         // Warn — never fail — when the literal above and declaredBuildNumber disagree.
