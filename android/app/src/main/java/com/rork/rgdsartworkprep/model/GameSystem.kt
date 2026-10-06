@@ -119,7 +119,8 @@ object SystemCatalog {
             libretroFolder = "Nintendo - Wii",
         ),
         GameSystem("nds", "Nintendo DS", "NDS", 15, setOf("nds", "dsi"), setOf("nds", "ds", "nintendods"), true, libretroFolder = "Nintendo - Nintendo DS"),
-        GameSystem("n3ds", "Nintendo 3DS", "3DS", 17, setOf("3ds", "cia"), setOf("3ds", "n3ds", "nintendo3ds"), true, libretroFolder = "Nintendo - Nintendo 3DS"),
+        // `cci` is the CTR cart image Azahar loads alongside `3ds`; no other system uses it.
+        GameSystem("n3ds", "Nintendo 3DS", "3DS", 17, setOf("3ds", "cia", "cci"), setOf("3ds", "n3ds", "nintendo3ds"), true, libretroFolder = "Nintendo - Nintendo 3DS"),
         GameSystem("vb", "Virtual Boy", "VB", 11, setOf("vb"), setOf("vb", "virtualboy"), true, libretroFolder = "Nintendo - Virtual Boy"),
         // Sega
         GameSystem("megadrive", "Sega Genesis / Mega Drive", "Genesis", 1, setOf("md", "gen", "smd"), setOf("megadrive", "genesis", "md", "gen"), true, libretroFolder = "Sega - Mega Drive - Genesis"),

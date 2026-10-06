@@ -48,10 +48,11 @@ class ArtworkDiscoveryTest {
         val report = folder(
             covers = emptyMap(),
             roms = emptySet(),
-            others = listOf("Kid Icarus.cci", "Zelda.cci", "Homebrew.3dsx", "gamelist.xml", "readme.txt"),
+            others = listOf("Kid Icarus.cxi", "Zelda.cxi", "Homebrew.3dsx", "Kid Icarus.cci", "gamelist.xml", "readme.txt"),
         )
-        assertEquals(mapOf("cci" to 2, "3dsx" to 1), report.unreadByExtension)
-        assertEquals(listOf("cci" to 2, "3dsx" to 1), report.topUnread())
+        // `cci` is a 3DS game since 1.6.3, so it is no longer reported as unread.
+        assertEquals(mapOf("cxi" to 2, "3dsx" to 1), report.unreadByExtension)
+        assertEquals(listOf("cxi" to 2, "3dsx" to 1), report.topUnread())
     }
 
     @Test
@@ -59,8 +60,8 @@ class ArtworkDiscoveryTest {
         val report = folder(
             covers = emptyMap(),
             roms = emptySet(),
-            others = listOf("boot9.bin.cci", ".hidden.cci"),
-            ignored = setOf("boot9.bin.cci"),
+            others = listOf("boot9.bin.cxi", ".hidden.cxi"),
+            ignored = setOf("boot9.bin.cxi"),
         )
         assertEquals(0, report.unreadTotal)
     }

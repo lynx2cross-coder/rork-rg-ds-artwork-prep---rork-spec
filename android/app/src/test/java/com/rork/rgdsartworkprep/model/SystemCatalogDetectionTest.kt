@@ -44,6 +44,25 @@ class SystemCatalogDetectionTest {
         assertEquals("snes", detectKey("game.zip", "SNES", "Nintendo - Nintendo Entertainment System"))
     }
 
+    @Test
+    fun `3DS cci cart images are 3DS games anywhere`() {
+        assertEquals("n3ds", detectKey("Kid Icarus - Uprising (USA) (En,Fr,Es) (Rev 1).cci", "3DS"))
+        assertEquals("n3ds", detectKey("Game.CCI"))
+        assertEquals("n3ds", detectKey("Game.3ds"))
+        assertEquals("n3ds", detectKey("Game.cia"))
+        assertTrue("cci" in SystemCatalog.knownRomExtensions)
+        assertTrue("cci" !in SystemCatalog.ambiguousExtensions)
+    }
+
+    @Test
+    fun `adding cci leaves every other extension owner unchanged`() {
+        val owners = SystemCatalog.all.filter { "cci" in it.extensions }.map { it.key }
+        assertEquals(listOf("n3ds"), owners)
+        assertNull(detectKey("Game.cxi"))
+        assertNull(detectKey("Game.3dsx"))
+        assertEquals("nds", detectKey("Game.nds"))
+    }
+
     // endregion
 
     // region broad manufacturer aliases must no longer identify a system
