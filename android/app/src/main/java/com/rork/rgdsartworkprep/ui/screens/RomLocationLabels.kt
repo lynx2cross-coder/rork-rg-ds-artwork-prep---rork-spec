@@ -14,6 +14,14 @@ internal fun scanProgressLabel(progress: MultiLocationScan.Progress?, savedCount
     else -> "Scanning ${progress.index} of ${progress.total} locations\u2026"
 }
 
+/** The Artwork screen's count line, saying the covers come from every saved location. */
+internal fun coversInPlaceLabel(count: Int, locationCount: Int, isScanning: Boolean): String {
+    val covers = if (count == 1) "1 cover in place" else "$count covers in place"
+    val across = if (locationCount > 1) " across $locationCount ROM locations" else ""
+    val refreshing = if (isScanning) " \u00b7 refreshing\u2026" else ""
+    return "$covers$across$refreshing"
+}
+
 /** Names the saved locations in one short phrase for the Home summary. */
 internal fun locationsLabel(locations: List<RomLocation>): String = when (locations.size) {
     0 -> "No ROM location"

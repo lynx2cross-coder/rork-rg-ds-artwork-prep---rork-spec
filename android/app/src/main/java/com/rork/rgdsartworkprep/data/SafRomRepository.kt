@@ -34,6 +34,15 @@ data class LibraryScan(
     val prepared: List<RomEntry> get() = roms.filter { it.hasArtwork }
 
     /**
+     * This scan with one ROM's entry replaced by [update] — used when a cover appears
+     * after the scan ran. Returns this same instance when no ROM has [romId].
+     */
+    fun withArtworkInPlace(romId: String, update: (RomEntry) -> RomEntry): LibraryScan {
+        val replaced = ArtworkRefresh.replaceById(roms, romId, { it.id }, update) ?: return this
+        return copy(roms = replaced)
+    }
+
+    /**
      * This scan with every newly ignored file taken out, each one added to
      * [ignoredCount] so the total stays what a fresh rescan would report.
      */
@@ -62,7 +71,12 @@ data class LibraryScan(
 
 /** Where a written file ended up. */
 sealed interface FileWriteResult {
-    data class SavedToLibrary(val displayPath: String, val fileName: String) : FileWriteResult
+    data class SavedToLibrary(
+        val displayPath: String,
+        val fileName: String,
+        /** The cover file just written, so the Artwork screen can show it without a rescan. */
+        val artworkUri: Uri? = null,
+    ) : FileWriteResult
     data class ExportedToAppStorage(
         val displayPath: String,
         val reason: String,
@@ -556,7 +570,11 @@ class SafRomRepository(
         // Names the location too, so two same-named games in two locations each show
         // where their cover actually went.
         val where = rom.locationTreeUri?.let { "${RomLocationLabel.of(it).full} \u00b7 " }.orEmpty()
-        return FileWriteResult.SavedToLibrary("$where$prefix$imgsName/$savedName", "$imgsName/$savedName")
+        return FileWriteResult.SavedToLibrary(
+            displayPath = "$where$prefix$imgsName/$savedName",
+            fileName = "$imgsName/$savedName",
+            artworkUri = targetUri,
+        )
     }
 
     // endregion

@@ -1,5 +1,6 @@
 package com.rork.rgdsartworkprep.data
 
+import android.net.Uri
 import android.util.Log
 import com.rork.rgdsartworkprep.model.GameSystem
 import com.rork.rgdsartworkprep.model.RomEntry
@@ -104,6 +105,20 @@ class LibraryStore(
         val updated = current.scan.withoutIgnored(ignored)
         if (updated === current.scan) return
         _state.value = current.copy(scan = updated)
+    }
+
+    /**
+     * Records a cover that now exists next to one scanned ROM, in whichever saved
+     * location that ROM lives. Matched by the ROM's location-aware id, so a same-named
+     * game in another location is never marked by mistake. Nothing on disk is touched.
+     */
+    fun markArtworkInPlace(romId: String, artworkUri: Uri, relativePath: String) {
+        _state.update { current ->
+            val updated = current.scan.withArtworkInPlace(romId) {
+                it.copy(artworkUri = artworkUri, artworkRelativePath = relativePath)
+            }
+            if (updated === current.scan) current else current.copy(scan = updated)
+        }
     }
 
     fun romsById(ids: Set<String>): List<RomEntry> =

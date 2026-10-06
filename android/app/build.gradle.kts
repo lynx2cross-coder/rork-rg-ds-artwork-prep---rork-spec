@@ -17,8 +17,8 @@ plugins {
  * word followed by `=` and digits, and must find the real declaration inside
  * `defaultConfig`, not a helper up here.
  */
-val declaredBuildNumber = 22
-val declaredVersionName = "1.6.0"
+val declaredBuildNumber = 23
+val declaredVersionName = "1.6.1"
 
 /**
  * Values at or above this are a packaging timestamp rather than a hand-written build
@@ -160,6 +160,13 @@ android {
         // `queue-5`: per ROM, detection, scheduling, provider order and matching are
         // untouched.
         //
+        // 1.6.1: PATCH. The Artwork screen showed only covers that existed when the
+        // library was first scanned, so 3DS covers prepared on the SD card after that
+        // scan never appeared there. A saved or found cover now updates the ROM it
+        // belongs to (by its location-aware id) straight away, the screen rescans every
+        // location after a run that finished since the last scan, and it has a rescan
+        // button. Nothing about where covers are written changed: still queue-5.
+        //
         // The next line MUST stay a plain integer literal. The packaging step that
         // builds the installable APK rewrites this file first, replacing the first
         // `versionCode = <digits>` it finds with a build timestamp — which is what
@@ -169,7 +176,7 @@ android {
         // already had the stamped 1789174724 installed. Android will not install a
         // lower version code over a higher one, so the RG DS rejected the package.
         // A reference compiles and tests green — it fails only on the device.
-        versionCode = 22
+        versionCode = 23
         versionName = declaredVersionName
 
         // Warn — never fail — when the literal above and declaredBuildNumber disagree.

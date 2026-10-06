@@ -164,6 +164,13 @@ class ScrapeCoordinator(
      * file mid-run. The pipeline itself never sees an ignored file, so it never checks.
      */
     private val ignoredFiles: () -> IgnoredFiles = { IgnoredFiles.NONE },
+    /**
+     * Told about every cover written into — or found already in — a ROM's own location,
+     * so the library and with it the Artwork screen show it straight away, whichever
+     * saved location it is in. Without this, a cover saved during a run stayed invisible
+     * until the next full library scan.
+     */
+    private val onArtworkInPlace: (rom: RomEntry, artworkUri: Uri, relativePath: String) -> Unit = { _, _, _ -> },
 ) {
 
     private val appContext = context.applicationContext
@@ -1118,10 +1125,16 @@ class ScrapeCoordinator(
         }
 
         if (!rescrape) {
-            val existingPath = rom.artworkRelativePath
-                ?: treeUri?.let { saf.findExistingArtwork(it, rom) }?.relativePath
+            // Looked up on disk only when the scan did not already see a cover.
+            val found = if (rom.artworkRelativePath == null) {
+                treeUri?.let { saf.findExistingArtwork(it, rom) }
+            } else {
+                null
+            }
+            val existingPath = rom.artworkRelativePath ?: found?.relativePath
             val hasArtwork = existingPath != null || rom.artworkUri != null
             if (hasArtwork) {
+                found?.let { onArtworkInPlace(rom, it.uri, it.relativePath) }
                 updateItem(id) { it.copy(status = PrepStatus.AlreadyExists, message = "Artwork already in place") }
                 // Still listed in gamelist.xml, but never overwriting richer existing data.
                 recordExistingGamelistEntry(rom, existingPath)
@@ -1404,13 +1417,17 @@ class ScrapeCoordinator(
         // The cover goes into the ROM's own location, never into another saved one —
         // two same-named games in two locations each get their own file.
         val tree = RomLocations.outputTree(rom.locationTreeUri) { saf.hasWriteAccess(Uri.parse(it)) }
-        return saf.saveArtwork(
+        val result = saf.saveArtwork(
             treeUri = tree?.let(Uri::parse),
             rom = rom,
             bytes = bytes,
             overwrite = overwrite,
             forceExport = settingsSnapshot.forceExportFallback,
         )
+        if (result is FileWriteResult.SavedToLibrary && result.artworkUri != null) {
+            onArtworkInPlace(rom, result.artworkUri, result.fileName)
+        }
+        return result
     }
 
     private fun applyWriteResult(id: String, title: String, releaseDate: String?, result: FileWriteResult) {

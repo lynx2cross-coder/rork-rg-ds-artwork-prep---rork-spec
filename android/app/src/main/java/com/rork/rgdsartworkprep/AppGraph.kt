@@ -129,6 +129,7 @@ object AppGraph {
             stateStore = scanState,
             diagnostics = scanDiagnostics,
             ignoredFiles = { ignoredFiles.current },
+            onArtworkInPlace = { rom, uri, relativePath -> library.markArtworkInPlace(rom.id, uri, relativePath) },
         )
     }
 

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ImageNotSupported
 import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.rork.rgdsartworkprep.AppGraph
+import com.rork.rgdsartworkprep.data.ArtworkRefresh
+import com.rork.rgdsartworkprep.data.RomLocationLabel
 import com.rork.rgdsartworkprep.model.RomEntry
 import com.rork.rgdsartworkprep.ui.components.EmptyState
 import com.rork.rgdsartworkprep.ui.components.InfoPill
@@ -54,11 +57,27 @@ import com.rork.rgdsartworkprep.ui.theme.TextSecondary
 fun ArtworkScreen(onBack: () -> Unit) {
     val library by AppGraph.library.state.collectAsStateWithLifecycle()
     val locations by AppGraph.romLocations.locations.collectAsStateWithLifecycle()
+    val scrape by AppGraph.scraper.state.collectAsStateWithLifecycle()
     val layout = LocalAppLayout.current
     val exportedCount = remember(library.scan.scannedAtMillis) { AppGraph.saf.exportedFileCount() }
 
     LaunchedEffect(locations) {
         if (locations.isNotEmpty()) AppGraph.library.refresh()
+    }
+    // A preparation run that finished after the last scan may have written covers into
+    // any saved location; rescan so every one of them is shown, not only the ones
+    // that existed when the library was first scanned.
+    LaunchedEffect(scrape.scanEndedAtWallMillis, library.scan.scannedAtMillis, library.isScanning) {
+        if (
+            ArtworkRefresh.needsRescan(
+                lastRunEndedAtMillis = scrape.scanEndedAtWallMillis,
+                scannedAtMillis = library.scan.scannedAtMillis,
+                hasScanned = library.hasScanned,
+                isScanning = library.isScanning,
+            )
+        ) {
+            AppGraph.library.refresh(force = true)
+        }
     }
 
     val prepared = library.scan.prepared
@@ -73,10 +92,18 @@ fun ArtworkScreen(onBack: () -> Unit) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    if (locations.isNotEmpty()) {
+                        IconButton(onClick = { AppGraph.library.refresh(force = true) }) {
+                            Icon(Icons.Rounded.Refresh, contentDescription = "Rescan all ROM locations")
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Graphite,
                     titleContentColor = TextPrimary,
                     navigationIconContentColor = TextPrimary,
+                    actionIconContentColor = TextSecondary,
                 ),
             )
         },
@@ -90,7 +117,14 @@ fun ArtworkScreen(onBack: () -> Unit) {
                 )
             }
 
-            if (prepared.isEmpty()) {
+            if (prepared.isEmpty() && library.isScanning) {
+                Text(
+                    text = scanProgressLabel(library.progress, locations.size),
+                    modifier = Modifier.padding(horizontal = layout.screenPadding + 4.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+            } else if (prepared.isEmpty()) {
                 EmptyState(
                     icon = Icons.Rounded.ImageNotSupported,
                     title = "No prepared artwork yet",
@@ -99,7 +133,7 @@ fun ArtworkScreen(onBack: () -> Unit) {
                 )
             } else {
                 Text(
-                    text = "${prepared.size} covers in place",
+                    text = coversInPlaceLabel(prepared.size, locations.size, library.isScanning),
                     modifier = Modifier.padding(
                         horizontal = layout.screenPadding + 4.dp,
                         vertical = if (layout.isShort) 6.dp else 10.dp,
@@ -119,7 +153,11 @@ fun ArtworkScreen(onBack: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(prepared, key = { it.id }) { rom -> ArtworkTile(rom) }
+                    // Keyed by the location-aware id, so the same game in two locations
+                    // is two tiles, each showing the cover that sits in its own folder.
+                    items(prepared, key = { it.id }) { rom ->
+                        ArtworkTile(rom, showLocation = locations.size > 1)
+                    }
                 }
             }
         }
@@ -127,7 +165,7 @@ fun ArtworkScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ArtworkTile(rom: RomEntry) {
+private fun ArtworkTile(rom: RomEntry, showLocation: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
             modifier = Modifier
@@ -152,10 +190,14 @@ private fun ArtworkTile(rom: RomEntry) {
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
         )
+        val system = rom.system?.shortName ?: rom.extension.uppercase()
+        val where = rom.locationTreeUri?.takeIf { showLocation }?.let { RomLocationLabel.of(it).volume }
         Text(
-            text = rom.system?.shortName ?: rom.extension.uppercase(),
+            text = if (where != null) "$system \u00b7 $where" else system,
             style = MaterialTheme.typography.labelMedium,
             color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
