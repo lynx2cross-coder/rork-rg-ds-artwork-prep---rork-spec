@@ -438,8 +438,14 @@ private fun LocationSummaries(
 internal fun locationSummaryLabel(summary: LocationScanSummary): String = when {
     summary.failed -> "could not be read"
     !summary.access.isScannable -> "unavailable"
-    summary.romCount == 1 -> "1 game"
-    else -> "${summary.romCount} games"
+    else -> buildString {
+        append(if (summary.romCount == 1) "1 game" else "${summary.romCount} games")
+        when (val removed = summary.gamelistEntriesRemoved) {
+            0 -> Unit
+            1 -> append(" \u00b7 1 deleted game removed from gamelist")
+            else -> append(" \u00b7 $removed deleted games removed from gamelist")
+        }
+    }
 }
 
 /**

@@ -29,7 +29,8 @@ data class GamelistEntry(
  * Produces a standard EmulationStation gamelist.xml.
  *
  * Any existing file is parsed and merged rather than replaced, so hand-written names,
- * favourites, play counts and entries for ROMs outside this run all survive.
+ * favourites, play counts and entries for ROMs outside this run all survive. Entries
+ * whose ROM file is gone are removed separately, by [com.rork.rgdsartworkprep.data.GamelistReconcile].
  */
 object GamelistBuilder {
 

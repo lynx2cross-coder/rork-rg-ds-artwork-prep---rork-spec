@@ -17,8 +17,8 @@ plugins {
  * word followed by `=` and digits, and must find the real declaration inside
  * `defaultConfig`, not a helper up here.
  */
-val declaredBuildNumber = 25
-val declaredVersionName = "1.6.3"
+val declaredBuildNumber = 26
+val declaredVersionName = "1.6.4"
 
 /**
  * Values at or above this are a packaging timestamp rather than a hand-written build
@@ -178,6 +178,12 @@ android {
         // with its covers present but unmatched. Only the n3ds extension set changed;
         // every other system, artwork scanning, matching and storage are untouched.
         //
+        // 1.6.4: PATCH. gamelist.xml follows the files on disk. With gamelist
+        // generation on, a library scan removes from each existing gamelist.xml every
+        // <game> whose ROM is confirmed gone from that folder, in that location only,
+        // and a run's merge drops them too. Unreadable or empty folders, absolute and
+        // `../` paths are never treated as deleted. Other entries stay byte-for-byte.
+        //
         // The next line MUST stay a plain integer literal. The packaging step that
         // builds the installable APK rewrites this file first, replacing the first
         // `versionCode = <digits>` it finds with a build timestamp — which is what
@@ -187,7 +193,7 @@ android {
         // already had the stamped 1789174724 installed. Android will not install a
         // lower version code over a higher one, so the RG DS rejected the package.
         // A reference compiles and tests green — it fails only on the device.
-        versionCode = 25
+        versionCode = 26
         versionName = declaredVersionName
 
         // Warn — never fail — when the literal above and declaredBuildNumber disagree.

@@ -1554,7 +1554,14 @@ class ScrapeCoordinator(
                 } else {
                     null
                 }
-                val xml = GamelistBuilder.merge(existingXml, bucket.entries.values.toList())
+                val merged = GamelistBuilder.merge(existingXml, bucket.entries.values.toList())
+                // The merge keeps every existing entry; one whose ROM has since been
+                // deleted from this folder is dropped here, checked in this location only.
+                val xml = if (existingXml != null && effectiveTree != null && bucket.parentDocumentId != null) {
+                    saf.withoutMissingGames(effectiveTree, bucket.parentDocumentId, merged)
+                } else {
+                    merged
+                }
                 when (
                     saf.saveGamelist(
                         treeUri = effectiveTree,

@@ -56,7 +56,13 @@ object AppGraph {
             legacyTreeUri = settings.current.libraryTreeUri,
         )
     }
-    val saf: SafRomRepository by lazy { SafRomRepository(appContext) { ignoredFiles.current } }
+    val saf: SafRomRepository by lazy {
+        SafRomRepository(
+            context = appContext,
+            ignoredFiles = { ignoredFiles.current },
+            gamelistSync = { settings.current.generateGamelist },
+        )
+    }
     val matchCache: MatchCacheRepository by lazy { MatchCacheRepository(appContext) }
     /**
      * Kept as its own singleton because Settings talks to it directly for credential

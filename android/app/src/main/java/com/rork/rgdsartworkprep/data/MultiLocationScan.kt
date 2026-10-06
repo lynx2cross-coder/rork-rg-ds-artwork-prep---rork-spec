@@ -13,6 +13,8 @@ data class LocationScanSummary(
     val failed: Boolean = false,
     /** What the walk saw about covers here, for the Artwork screen's breakdown. */
     val discovery: ArtworkDiscovery.Report = ArtworkDiscovery.Report(),
+    /** `<game>` entries taken out of this location's gamelists because the ROM is gone. */
+    val gamelistEntriesRemoved: Int = 0,
 ) {
     val scanned: Boolean get() = access.isScannable && !failed
 }
@@ -22,6 +24,7 @@ data class LocationItems<T>(
     val items: List<T>,
     val ignoredCount: Int,
     val discovery: ArtworkDiscovery.Report = ArtworkDiscovery.Report(),
+    val gamelistEntriesRemoved: Int = 0,
 )
 
 /**
@@ -96,6 +99,7 @@ object MultiLocationScan {
                 romCount = kept,
                 ignoredCount = found.ignoredCount,
                 discovery = found.discovery,
+                gamelistEntriesRemoved = found.gamelistEntriesRemoved,
             )
         }
         return Result(items, ignored, summaries)

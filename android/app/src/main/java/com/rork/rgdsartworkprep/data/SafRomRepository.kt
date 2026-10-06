@@ -9,6 +9,9 @@ import android.util.Log
 import com.rork.rgdsartworkprep.model.RomEntry
 import com.rork.rgdsartworkprep.model.SystemCatalog
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -105,6 +108,11 @@ class SafRomRepository(
      * a walk is under way is left out of the rest of that walk too.
      */
     private val ignoredFiles: () -> IgnoredFiles = { IgnoredFiles.NONE },
+    /**
+     * Whether gamelist.xml generation is on. Only then does a library scan bring each
+     * folder's existing gamelist.xml in line with the files actually there.
+     */
+    private val gamelistSync: () -> Boolean = { false },
 ) {
 
     private val resolver: ContentResolver get() = context.contentResolver
@@ -211,6 +219,15 @@ class SafRomRepository(
         val roms = mutableListOf<RomEntry>()
         var ignoredCount = 0
         var discovery = ArtworkDiscovery.Report()
+        var gamelistRemoved = 0
+        // Only this location's own gamelists, through this location's own grant, and
+        // only when it can be written: a read-only location is never changed.
+        val onGamelist: (suspend (String, Child) -> Unit)? =
+            if (gamelistSync() && hasWriteAccess(treeUri)) {
+                { folderId, file -> gamelistRemoved += reconcileGamelist(treeUri, folderId, file) }
+            } else {
+                null
+            }
         try {
             val rootId = DocumentsContract.getTreeDocumentId(treeUri)
             val rootName = describeTree(treeUri).substringAfterLast('/')
@@ -225,6 +242,7 @@ class SafRomRepository(
                 output = roms,
                 onIgnored = { ignoredCount++ },
                 onFolder = { discovery += it },
+                onGamelist = onGamelist,
                 depth = 0,
             )
         } catch (cancellation: CancellationException) {
@@ -237,6 +255,7 @@ class SafRomRepository(
             items = roms.map { it.copy(locationTreeUri = location.treeUri, locationScope = scope) },
             ignoredCount = ignoredCount,
             discovery = discovery,
+            gamelistEntriesRemoved = gamelistRemoved,
         )
     }
 
@@ -250,6 +269,7 @@ class SafRomRepository(
         output: MutableList<RomEntry>,
         onIgnored: () -> Unit,
         onFolder: (ArtworkDiscovery.Report) -> Unit,
+        onGamelist: (suspend (folderId: String, file: Child) -> Unit)?,
         depth: Int,
     ) {
         if (depth > MAX_DEPTH) return
@@ -362,8 +382,15 @@ class SafRomRepository(
                 output = output,
                 onIgnored = onIgnored,
                 onFolder = onFolder,
+                onGamelist = onGamelist,
                 depth = depth + 1,
             )
+        }
+
+        if (onGamelist != null) {
+            children
+                .firstOrNull { !it.isDirectory && it.name.equals(GAMELIST_FILE_NAME, ignoreCase = true) }
+                ?.let { onGamelist(parentDocumentId, it) }
         }
     }
 
@@ -379,21 +406,27 @@ class SafRomRepository(
         fun uri(treeUri: Uri): Uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
     }
 
-    private fun listChildren(treeUri: Uri, parentDocumentId: String): List<Child> {
+    private fun listChildren(treeUri: Uri, parentDocumentId: String): List<Child> =
+        listChildrenOrNull(treeUri, parentDocumentId).orEmpty()
+
+    /** A folder's children, or null when it could not be listed at all. */
+    private fun listChildrenOrNull(treeUri: Uri, parentDocumentId: String): List<Child>? {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocumentId)
         val result = mutableListOf<Child>()
         try {
-            resolver.query(childrenUri, CHILD_COLUMNS, null, null, null)?.use { cursor ->
-                while (cursor.moveToNext()) {
-                    val documentId = cursor.getString(0) ?: continue
-                    val name = cursor.getString(1) ?: continue
-                    val mime = cursor.getString(2).orEmpty()
-                    val size = if (cursor.isNull(3)) 0L else cursor.getLong(3)
+            val cursor = resolver.query(childrenUri, CHILD_COLUMNS, null, null, null) ?: return null
+            cursor.use {
+                while (it.moveToNext()) {
+                    val documentId = it.getString(0) ?: continue
+                    val name = it.getString(1) ?: continue
+                    val mime = it.getString(2).orEmpty()
+                    val size = if (it.isNull(3)) 0L else it.getLong(3)
                     result += Child(documentId, name, mime, size)
                 }
             }
         } catch (error: Exception) {
             Log.w(TAG, "Could not list a folder: ${error.javaClass.simpleName}")
+            return null
         }
         return result
     }
@@ -620,6 +653,72 @@ class SafRomRepository(
     // endregion
 
     // region gamelist.xml
+
+    /**
+     * Folder listing for [GamelistReconcile]. An empty listing counts as unreadable:
+     * a folder holding a gamelist is never empty, and an SD card going away can answer
+     * with an empty folder rather than an error. Treating that as "every game deleted"
+     * would empty the gamelist, so such an entry is kept instead.
+     */
+    private fun reconcileListing(treeUri: Uri): (String) -> List<GamelistReconcile.Listed<String>>? = { folderId ->
+        listChildrenOrNull(treeUri, folderId)
+            ?.takeIf { it.isNotEmpty() }
+            ?.map { GamelistReconcile.Listed(it.name, it.isDirectory, it.documentId) }
+    }
+
+    /**
+     * Takes out of one existing gamelist.xml every `<game>` whose ROM is no longer in
+     * that folder, and writes it back only if something was removed. Everything else
+     * in the file stays byte-for-byte. ROM files are never touched.
+     *
+     * @return how many entries were removed
+     */
+    private suspend fun reconcileGamelist(treeUri: Uri, folderId: String, file: Child): Int {
+        coroutineContext.ensureActive()
+        if (file.size > MAX_GAMELIST_BYTES) return 0
+        return try {
+            val bytes = resolver.openInputStream(file.uri(treeUri))?.use { it.readBytes() } ?: return 0
+            // Strict decoding: a file in another encoding is left alone rather than
+            // re-saved with its other entries garbled.
+            val xml = try {
+                Charsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes))
+                    .toString()
+            } catch (error: CharacterCodingException) {
+                Log.w(TAG, "gamelist.xml is not UTF-8, leaving it untouched")
+                return 0
+            }
+            val pruned = GamelistReconcile.prune(xml, folderId, reconcileListing(treeUri))
+            if (pruned.removedCount == 0) return 0
+            resolver.openOutputStream(file.uri(treeUri), "wt")
+                ?.use { it.write(pruned.xml.toByteArray(Charsets.UTF_8)) }
+                ?: return 0
+            Log.i(TAG, "gamelist.xml: removed ${pruned.removedCount} entries whose ROM is gone")
+            pruned.removedCount
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not reconcile a gamelist: ${error.javaClass.simpleName}")
+            0
+        }
+    }
+
+    /**
+     * [xml] with every `<game>` whose ROM is no longer in the folder taken out, checked
+     * against that folder in its own location. Used right before a run writes a
+     * gamelist, so merging never carries a deleted game forward.
+     */
+    suspend fun withoutMissingGames(treeUri: Uri, folderId: String, xml: String): String =
+        withContext(Dispatchers.IO) {
+            try {
+                GamelistReconcile.prune(xml, folderId, reconcileListing(treeUri)).xml
+            } catch (error: Exception) {
+                Log.w(TAG, "Could not check gamelist entries: ${error.javaClass.simpleName}")
+                xml
+            }
+        }
 
     /** Reads an existing gamelist.xml from a system folder so it can be merged, not clobbered. */
     suspend fun readGamelist(treeUri: Uri, parentDocumentId: String): String? = withContext(Dispatchers.IO) {

@@ -474,7 +474,8 @@ fun SettingsScreen(
                 title = "Generate gamelist.xml",
                 description = "After each run, write a standard EmulationStation gamelist.xml into " +
                     "every system folder with the game name, description, developer, genre, players, " +
-                    "release date and cover path. Existing entries and favourites are merged, never lost.",
+                    "release date and cover path. Existing entries and favourites are merged, never lost; " +
+                    "a game whose ROM you deleted is taken out on the next library scan.",
                 checked = settings.generateGamelist,
                 onCheckedChange = { AppGraph.settings.setGenerateGamelist(it) },
             )
