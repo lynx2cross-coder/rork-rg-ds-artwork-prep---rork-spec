@@ -210,6 +210,7 @@ class SafRomRepository(
         val scope = RomLocations.scopeOf(location)
         val roms = mutableListOf<RomEntry>()
         var ignoredCount = 0
+        var discovery = ArtworkDiscovery.Report()
         try {
             val rootId = DocumentsContract.getTreeDocumentId(treeUri)
             val rootName = describeTree(treeUri).substringAfterLast('/')
@@ -223,6 +224,7 @@ class SafRomRepository(
                 subPath = null,
                 output = roms,
                 onIgnored = { ignoredCount++ },
+                onFolder = { discovery += it },
                 depth = 0,
             )
         } catch (cancellation: CancellationException) {
@@ -234,6 +236,7 @@ class SafRomRepository(
         LocationItems(
             items = roms.map { it.copy(locationTreeUri = location.treeUri, locationScope = scope) },
             ignoredCount = ignoredCount,
+            discovery = discovery,
         )
     }
 
@@ -246,6 +249,7 @@ class SafRomRepository(
         subPath: String?,
         output: MutableList<RomEntry>,
         onIgnored: () -> Unit,
+        onFolder: (ArtworkDiscovery.Report) -> Unit,
         depth: Int,
     ) {
         if (depth > MAX_DEPTH) return
@@ -256,9 +260,22 @@ class SafRomRepository(
 
         val artworkDirs = children.filter { it.isDirectory && it.name.lowercase() in ARTWORK_DIRS }
         val artworkByBase = mutableMapOf<String, ExistingArtwork>()
+        // Only counted, never used as covers: images one folder further down, such as
+        // `media/box2dfront/x.png`, which the walk does not read.
+        var nestedImages = 0
+        val nestedFolders = mutableListOf<String>()
 
         artworkDirs.forEach { dir ->
-            listChildren(treeUri, dir.documentId)
+            val dirChildren = listChildren(treeUri, dir.documentId)
+            dirChildren.filter { it.isDirectory && !it.name.startsWith(".") }.forEach { sub ->
+                val count = listChildren(treeUri, sub.documentId)
+                    .count { !it.isDirectory && it.extension in SystemCatalog.imageExtensions }
+                if (count > 0) {
+                    nestedImages += count
+                    nestedFolders += "${dir.name}/${sub.name}"
+                }
+            }
+            dirChildren
                 .filter { !it.isDirectory && it.extension in SystemCatalog.imageExtensions }
                 .forEach { image ->
                     artworkByBase.putIfAbsent(
@@ -285,6 +302,28 @@ class SafRomRepository(
             folderChain = folderChain,
             ignored = ignoredFiles(),
             onIgnored = { onIgnored() },
+        )
+
+        val folderPath = folderChain.reversed().joinToString("/")
+        val acceptedNames = accepted.mapTo(HashSet()) { it.item.name }
+        val ignoredNow = ignoredFiles()
+        val folderReport = ArtworkDiscovery.folder(
+            folderPath = folderPath,
+            coversByBase = artworkByBase.mapValues { it.value.relativePath },
+            romBaseNames = accepted.mapTo(HashSet()) { it.item.baseName.lowercase() },
+            otherFileNames = children
+                .filter { !it.isDirectory && it.extension !in SystemCatalog.imageExtensions && it.name !in acceptedNames }
+                .map { it.name },
+            knownRomExtensions = SystemCatalog.knownRomExtensions,
+            isIgnored = { ignoredNow.matches(it) },
+        )
+        onFolder(
+            folderReport.copy(
+                nestedCoverFiles = nestedImages,
+                nestedCoverFolders = nestedFolders.take(ArtworkDiscovery.MAX_SAMPLES).map { folder ->
+                    if (folderPath.isEmpty()) folder else "$folderPath/$folder"
+                },
+            ),
         )
 
         accepted.forEach { (child, system) ->
@@ -322,6 +361,7 @@ class SafRomRepository(
                 },
                 output = output,
                 onIgnored = onIgnored,
+                onFolder = onFolder,
                 depth = depth + 1,
             )
         }

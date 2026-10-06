@@ -11,12 +11,18 @@ data class LocationScanSummary(
     val ignoredCount: Int = 0,
     /** True when the walk itself failed part-way, as opposed to never starting. */
     val failed: Boolean = false,
+    /** What the walk saw about covers here, for the Artwork screen's breakdown. */
+    val discovery: ArtworkDiscovery.Report = ArtworkDiscovery.Report(),
 ) {
     val scanned: Boolean get() = access.isScannable && !failed
 }
 
 /** What one location's walk produced. */
-data class LocationItems<T>(val items: List<T>, val ignoredCount: Int)
+data class LocationItems<T>(
+    val items: List<T>,
+    val ignoredCount: Int,
+    val discovery: ArtworkDiscovery.Report = ArtworkDiscovery.Report(),
+)
 
 /**
  * Scans every saved ROM location, one after another, and combines the results.
@@ -84,7 +90,13 @@ object MultiLocationScan {
                 }
             }
             ignored += found.ignoredCount
-            LocationScanSummary(location, status, romCount = kept, ignoredCount = found.ignoredCount)
+            LocationScanSummary(
+                location,
+                status,
+                romCount = kept,
+                ignoredCount = found.ignoredCount,
+                discovery = found.discovery,
+            )
         }
         return Result(items, ignored, summaries)
     }

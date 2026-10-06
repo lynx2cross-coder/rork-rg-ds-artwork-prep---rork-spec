@@ -17,8 +17,8 @@ plugins {
  * word followed by `=` and digits, and must find the real declaration inside
  * `defaultConfig`, not a helper up here.
  */
-val declaredBuildNumber = 23
-val declaredVersionName = "1.6.1"
+val declaredBuildNumber = 24
+val declaredVersionName = "1.6.2"
 
 /**
  * Values at or above this are a packaging timestamp rather than a hand-written build
@@ -167,6 +167,12 @@ android {
         // location after a run that finished since the last scan, and it has a rescan
         // button. Nothing about where covers are written changed: still queue-5.
         //
+        // 1.6.2: PATCH. Device evidence on the Artwork screen. Each location's walk now
+        // counts what it saw about covers (matched, named unlike any game, in deeper
+        // sub-folders) and which file types it did not read as games, and the Artwork
+        // screen lists that per location. Counting only: detection, matching, where
+        // covers are read from and written to are unchanged. Still queue-5.
+        //
         // The next line MUST stay a plain integer literal. The packaging step that
         // builds the installable APK rewrites this file first, replacing the first
         // `versionCode = <digits>` it finds with a build timestamp — which is what
@@ -176,7 +182,7 @@ android {
         // already had the stamped 1789174724 installed. Android will not install a
         // lower version code over a higher one, so the RG DS rejected the package.
         // A reference compiles and tests green — it fails only on the device.
-        versionCode = 23
+        versionCode = 24
         versionName = declaredVersionName
 
         // Warn — never fail — when the literal above and declaredBuildNumber disagree.
