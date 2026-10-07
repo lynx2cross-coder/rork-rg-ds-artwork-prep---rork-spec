@@ -108,8 +108,127 @@ SD Card
 └── 3DS
     ├── Kid Icarus Uprising.cci
     └── The Legend of Zelda - A Link Between Worlds.cci
+## Artwork Sources
 
+ROM Art Prep currently uses:
 
+- Hasheous
+- Libretro thumbnails
+- TheGamesDB
+- ScreenScraper
+
+Artwork availability depends on the source and the particular game.
+
+TheGamesDB and ScreenScraper require the appropriate credentials when enabled.
+
+If automatic matching cannot identify a game, the app can provide a manual artwork search so the user can choose an appropriate result.
+
+## 3DS File Support
+
+ROM Art Prep recognizes the following common 3DS game formats:
+
+- `.3ds`
+- `.cia`
+- `.cci`
+
+Common 3DS system files can be excluded using the Ignored Files settings.
+
+## Fast Scanning
+
+ROM Art Prep is designed to avoid allowing one difficult ROM search to hold up an entire collection.
+
+The scanner processes one ROM at a time and uses a queue for searches that take longer than expected.
+
+In general:
+
+**Fast match → process immediately**
+
+**Slow search → defer and retry**
+
+**Successful match → download artwork**
+
+**No usable automatic match → ask the user to choose**
+
+This allows the rest of a collection to finish without waiting indefinitely on one difficult title.
+
+## Gamelist Management
+
+ROM Art Prep can generate and maintain `gamelist.xml` files for compatible ROM folders.
+
+Existing game entries are preserved so frontend information such as favorites and play counts is not unnecessarily discarded.
+
+When enabled, ROM Art Prep checks for deleted ROMs and removes their corresponding entries from the appropriate `gamelist.xml`.
+
+Cleanup is performed separately for each ROM location and is designed to avoid making changes when a storage location is temporarily unavailable or unreadable.
+## Orphaned Artwork Cleanup
+
+ROM Art Prep can optionally remove artwork that no longer corresponds to a ROM in the same folder.
+
+This feature is **disabled by default**.
+
+When enabled, orphaned artwork cleanup runs during library scans and removes supported artwork files that no longer have a corresponding ROM.
+
+The setting is available under:
+
+**Settings → Orphaned Artwork**
+
+ROM files themselves are never deleted by this feature.
+
+## Supported Frontends
+
+ROM Art Prep is not tied to a specific frontend.
+
+The artwork and `gamelist.xml` files it creates can be used by compatible frontends that follow the corresponding folder and metadata conventions.
+
+It can therefore be used alongside an existing frontend rather than requiring you to replace it.
+
+## Android
+
+ROM Art Prep was developed and tested on Android, including the Anbernic RG DS.
+
+The application uses Android's storage permissions and folder selection system so that the user chooses which ROM collections the application is allowed to access.
+
+ROM Art Prep is intended for Android phones, tablets, and compatible handheld gaming devices.
+
+## Installation
+
+ROM Art Prep is distributed as an Android APK through the **Releases** section of this repository.
+
+Download the latest APK from the latest GitHub release and install it on your Android device.
+
+ROM Art Prep can be installed as an update over an existing compatible installation. Existing app settings and folder permissions should normally be retained when updating.
+## Current Status
+
+**Version 1.6.7 · Build 29**
+
+ROM Art Prep is a public Android release and is actively developed and tested on the Anbernic RG DS.
+
+The current release includes:
+
+- Multiple saved ROM locations
+- Artwork tracking across separate storage locations
+- 3DS `.cci` detection
+- Deleted-ROM `gamelist.xml` cleanup
+- Optional orphaned-artwork cleanup
+- Platform filtering in the Artwork gallery
+
+The project currently passes:
+
+- **409 automated tests**
+- **0 lint errors**
+- **Release build successfully**
+
+Version 1.6.4 was physically verified on an Anbernic RG DS with ROMs stored across two separate locations. Artwork was correctly detected and displayed from both internal storage and an SD card.
+
+## Diagnostics & Privacy
+
+ROM Art Prep includes optional diagnostic information to help investigate difficult scans.
+
+Diagnostic reports are designed to avoid including ROM contents, artwork, passwords, API keys, authentication tokens, or Android system logs.
+
+Filenames can be excluded from reports, and games can instead be represented anonymously as entries such as `Game 1`.
+
+## Screenshots
 ## Screenshots
 
 ![ROM Art Prep artwork gallery](artwork.png)
