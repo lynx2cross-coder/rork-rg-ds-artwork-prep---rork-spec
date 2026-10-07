@@ -17,8 +17,8 @@ class DiagnosticReportTest {
 
     private val environment = ReportEnvironment(
         appName = "ROM Art Prep",
-        versionName = "1.6.4",
-        versionCode = 26,
+        versionName = "1.6.5",
+        versionCode = 27,
         androidRelease = "13",
         sdkInt = 33,
         manufacturer = "Anbernic",
@@ -181,7 +181,7 @@ class DiagnosticReportTest {
     fun `report can be generated with app scan and per rom sections`() {
         val report = build()
         assertTrue(report.contains("APP INFORMATION"))
-        assertTrue(report.contains("Version: 1.6.4 (build 26)"))
+        assertTrue(report.contains("Version: 1.6.5 (build 27)"))
         // The queue build shipped without a version bump, so its report could not be
         // told apart from the previous one. This line makes the engine explicit.
         assertTrue(report.contains("Scan engine: queue-5"))
@@ -210,7 +210,7 @@ class DiagnosticReportTest {
             includeFileNames = true,
         )
 
-        assertTrue(report.contains("Version: 1.6.4 (build 26)"))
+        assertTrue(report.contains("Version: 1.6.5 (build 27)"))
         assertTrue(report.contains("Packaged build: 1789174724"))
     }
 
