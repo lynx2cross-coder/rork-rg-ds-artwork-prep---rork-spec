@@ -1,16 +1,16 @@
 # ROM Art Prep
 
-**ROM Art Prep is a standalone Android artwork scraper for ROM collections.**
+**ROM Art Prep is a standalone Android artwork and metadata preparation tool for ROM collections.**
 
 It was created to solve a simple problem: sometimes you want artwork for your ROMs without installing an entirely different frontend just to get a scraping feature.
 
-ROM Art Prep scans your ROM folders, identifies the game system, searches available artwork sources, downloads matching artwork, and can generate `gamelist.xml` files for compatible frontends.
+ROM Art Prep scans your ROM locations, identifies game systems, searches available artwork sources, downloads matching artwork, and can generate and maintain `gamelist.xml` files for compatible frontends.
 
 It is designed to work with existing ROM collections rather than replace your emulator or frontend.
 
 ## What It Does
 
-- 📁 Scan a ROM folder and its system subfolders
+- 📁 Scan and manage multiple saved ROM locations, including internal storage and SD cards
 - 🎮 Identify supported game systems from filenames, extensions, and folder names
 - 🖼️ Search for and download game artwork
 - ⚙️ Choose which supported systems ROM Art Prep should search for artwork
@@ -18,10 +18,13 @@ It is designed to work with existing ROM collections rather than replace your em
 - 🔎 Support alternate system names and RetroArch/Libretro folder naming
 - ✋ Provide manual artwork selection when automatic matching cannot identify a game
 - ⚡ Process ROMs one at a time with fast jobs completed immediately and slower searches handled through a queue
-- 📋 Generate and update `gamelist.xml` files
+- 📋 Generate and maintain `gamelist.xml` files
 - 💾 Remember artwork matches while avoiding incorrect matches between different ROM files
+- 🗂️ Keep artwork associated with the ROM's original storage location
+- 🧹 Clean up `gamelist.xml` entries when ROMs are deleted
+- 🗑️ Optionally remove orphaned artwork from deleted ROMs
+- 🎯 Filter the Artwork gallery by platform
 - 📱 Continue scanning safely when the Android app is placed in the background
-- 🧪 Provide diagnostic information to help troubleshoot difficult searches
 
 ## Why ROM Art Prep?
 
@@ -83,74 +86,28 @@ For convenience, ROM Art Prep also provides an optional shortcut for adding comm
 
 These files are never ignored automatically. The user must explicitly choose to add them.
 
-## Artwork Sources
+## Multiple ROM Locations
 
-ROM Art Prep currently uses:
+ROM Art Prep supports multiple saved ROM locations, allowing collections to be split across internal storage, SD cards, or other accessible Android storage locations.
 
-- Hasheous
-- Libretro thumbnails
+Each saved location maintains its own storage permission and is scanned independently.
 
-Artwork availability depends on the source and the particular game.
+Artwork remains associated with the ROM's original location. ROM Art Prep does not move ROMs or copy artwork between locations.
 
-If automatic matching cannot identify a game, the app can provide a manual artwork search so the user can choose an appropriate result.
+For example:
 
-## Fast Scanning
+```text
+Internal Storage
+└── ROMS
+    ├── NES
+    ├── SNES
+    ├── GB
+    └── ...
 
-ROM Art Prep is designed to avoid allowing one difficult ROM search to hold up an entire collection.
-
-The scanner processes one ROM at a time and uses a queue for searches that take longer than expected.
-
-In general:
-
-**Fast match → process immediately**
-
-**Slow search → defer and retry**
-
-**Successful match → download artwork**
-
-**No usable automatic match → ask the user to choose**
-
-This allows the rest of a collection to finish without waiting indefinitely on one difficult title.
-
-## Supported Frontends
-
-ROM Art Prep is not tied to a specific frontend.
-
-The artwork and `gamelist.xml` files it creates can be used by compatible frontends that follow the corresponding folder and metadata conventions.
-
-It can therefore be used alongside an existing frontend rather than requiring you to replace it.
-
-## Android
-
-ROM Art Prep was developed and tested on Android, including the Anbernic RG DS.
-
-The application uses Android's storage permissions and folder selection system so that the user chooses which ROM collection the application is allowed to access.
-
-## Installation
-
-ROM Art Prep is distributed as an Android APK through the **Releases** section of this repository.
-
-Download the latest APK from the latest GitHub release and install it on your Android device.
-
-ROM Art Prep can be installed as an update over an existing compatible installation. Existing app settings and folder permissions should normally be retained when updating.
-
-## Current Status
-
-ROM Art Prep is a public Android release.
-
-Version 1.5.1 has been tested on a physical Anbernic RG DS in addition to automated testing.
-
-The application has been tested against ROM libraries covering normal system folders, RetroArch-style folder names, ambiguous file extensions, unsupported systems, non-game files, ignored files, and artwork matching scenarios.
-
-Additional testing on other Android devices and ROM collections is welcome.
-
-## Diagnostics & Privacy
-
-ROM Art Prep includes optional diagnostic information to help investigate difficult scans.
-
-Diagnostic reports are designed to avoid including ROM contents, artwork, passwords, API keys, authentication tokens, or Android system logs.
-
-Filenames can be excluded from reports, and games can instead be represented anonymously as entries such as `Game 1`.
+SD Card
+└── 3DS
+    ├── Kid Icarus Uprising.cci
+    └── The Legend of Zelda - A Link Between Worlds.cci
 
 
 ## Screenshots
