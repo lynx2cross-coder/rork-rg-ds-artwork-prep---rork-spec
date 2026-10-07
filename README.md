@@ -36,5 +36,5 @@ ROM Art Prep was developed with AI-assisted tools and tested on real Android har
 Feedback
 For bugs or suggestions, open an issue with relevant details.
 Copyright
-Copyright © 2026 Eric Cross. All rights reserved.
+Copyright © 2026 by the developer. All rights reserved.
 ROM Art Prep is provided publicly for viewing, testing, and discussion. No license is granted to reproduce, redistribute, modify, or commercially distribute the software without permission from the copyright holder.
