@@ -113,6 +113,11 @@ class SafRomRepository(
      * folder's existing gamelist.xml in line with the files actually there.
      */
     private val gamelistSync: () -> Boolean = { false },
+    /**
+     * Whether orphaned-artwork cleanup is on. Only then does a library scan remove cover
+     * images whose ROM is gone, see [OrphanArtwork]. Off by default.
+     */
+    private val orphanCleanup: () -> Boolean = { false },
 ) {
 
     private val resolver: ContentResolver get() = context.contentResolver
@@ -220,6 +225,15 @@ class SafRomRepository(
         var ignoredCount = 0
         var discovery = ArtworkDiscovery.Report()
         var gamelistRemoved = 0
+        var orphansRemoved = 0
+        // Same rule as the gamelist: this location's own covers, through its own grant,
+        // and never in a location that is read-only.
+        val onOrphans: ((List<Child>) -> Unit)? =
+            if (orphanCleanup() && hasWriteAccess(treeUri)) {
+                { orphans -> orphansRemoved += deleteOrphans(treeUri, orphans) }
+            } else {
+                null
+            }
         // Only this location's own gamelists, through this location's own grant, and
         // only when it can be written: a read-only location is never changed.
         val onGamelist: (suspend (String, Child) -> Unit)? =
@@ -243,6 +257,7 @@ class SafRomRepository(
                 onIgnored = { ignoredCount++ },
                 onFolder = { discovery += it },
                 onGamelist = onGamelist,
+                onOrphans = onOrphans,
                 depth = 0,
             )
         } catch (cancellation: CancellationException) {
@@ -256,6 +271,7 @@ class SafRomRepository(
             ignoredCount = ignoredCount,
             discovery = discovery,
             gamelistEntriesRemoved = gamelistRemoved,
+            orphanCoversRemoved = orphansRemoved,
         )
     }
 
@@ -270,6 +286,7 @@ class SafRomRepository(
         onIgnored: () -> Unit,
         onFolder: (ArtworkDiscovery.Report) -> Unit,
         onGamelist: (suspend (folderId: String, file: Child) -> Unit)?,
+        onOrphans: ((List<Child>) -> Unit)?,
         depth: Int,
     ) {
         if (depth > MAX_DEPTH) return
@@ -277,6 +294,17 @@ class SafRomRepository(
 
         val children = listChildren(treeUri, parentDocumentId)
         if (children.isEmpty()) return
+
+        // Which files become games, and on which system, is decided in one pure place
+        // so the rules can be tested without a device. That is also where ignored
+        // files are dropped: after disc sets are grouped, before any system detection.
+        val accepted = ScanCandidates.select(
+            files = children.filter { !it.isDirectory },
+            fileName = { it.name },
+            folderChain = folderChain,
+            ignored = ignoredFiles(),
+            onIgnored = { onIgnored() },
+        )
 
         val artworkDirs = children.filter { it.isDirectory && it.name.lowercase() in ARTWORK_DIRS }
         val artworkByBase = mutableMapOf<String, ExistingArtwork>()
@@ -286,7 +314,26 @@ class SafRomRepository(
         val nestedFolders = mutableListOf<String>()
 
         artworkDirs.forEach { dir ->
-            val dirChildren = listChildren(treeUri, dir.documentId)
+            val listed = listChildren(treeUri, dir.documentId)
+            // Optional cleanup: covers whose ROM is gone are removed before anything
+            // below sees them, so they are neither shown nor counted as unmatched.
+            val dirChildren = if (onOrphans != null) {
+                val orphans = OrphanArtwork.orphans(
+                    romFolder = children.map { OrphanArtwork.Item(it.name, it.isDirectory, it) },
+                    coverFolder = listed.map { OrphanArtwork.Item(it.name, it.isDirectory, it) },
+                    hasGame = accepted.isNotEmpty(),
+                    imageExtensions = SystemCatalog.imageExtensions,
+                ).map { it.handle }
+                if (orphans.isNotEmpty()) {
+                    onOrphans(orphans)
+                    // Re-listed, so a cover that could not be deleted is still accounted for.
+                    listChildren(treeUri, dir.documentId)
+                } else {
+                    listed
+                }
+            } else {
+                listed
+            }
             dirChildren.filter { it.isDirectory && !it.name.startsWith(".") }.forEach { sub ->
                 val count = listChildren(treeUri, sub.documentId)
                     .count { !it.isDirectory && it.extension in SystemCatalog.imageExtensions }
@@ -312,17 +359,6 @@ class SafRomRepository(
                     ExistingArtwork(image.uri(treeUri), image.name),
                 )
             }
-
-        // Which files become games, and on which system, is decided in one pure place
-        // so the rules can be tested without a device. That is also where ignored
-        // files are dropped: after disc sets are grouped, before any system detection.
-        val accepted = ScanCandidates.select(
-            files = children.filter { !it.isDirectory },
-            fileName = { it.name },
-            folderChain = folderChain,
-            ignored = ignoredFiles(),
-            onIgnored = { onIgnored() },
-        )
 
         val folderPath = folderChain.reversed().joinToString("/")
         val acceptedNames = accepted.mapTo(HashSet()) { it.item.name }
@@ -383,6 +419,7 @@ class SafRomRepository(
                 onIgnored = onIgnored,
                 onFolder = onFolder,
                 onGamelist = onGamelist,
+                onOrphans = onOrphans,
                 depth = depth + 1,
             )
         }
@@ -648,6 +685,31 @@ class SafRomRepository(
             fileName = "$imgsName/$savedName",
             artworkUri = targetUri,
         )
+    }
+
+    // endregion
+
+    // region orphaned artwork
+
+    /**
+     * Deletes cover images [OrphanArtwork] found to belong to no game. Only those image
+     * files: never a ROM, a folder, or anything outside a cover folder.
+     *
+     * @return how many were actually deleted
+     */
+    private fun deleteOrphans(treeUri: Uri, orphans: List<Child>): Int {
+        var deleted = 0
+        orphans.forEach { cover ->
+            if (cover.isDirectory || cover.extension !in SystemCatalog.imageExtensions) return@forEach
+            val removed = runCatching { DocumentsContract.deleteDocument(resolver, cover.uri(treeUri)) }
+                .getOrElse { error ->
+                    Log.w(TAG, "Could not remove an orphaned cover: ${error.javaClass.simpleName}")
+                    false
+                }
+            if (removed) deleted++
+        }
+        if (deleted > 0) Log.i(TAG, "Removed $deleted orphaned cover(s)")
+        return deleted
     }
 
     // endregion

@@ -61,6 +61,7 @@ object AppGraph {
             context = appContext,
             ignoredFiles = { ignoredFiles.current },
             gamelistSync = { settings.current.generateGamelist },
+            orphanCleanup = { settings.current.cleanOrphanedArtwork },
         )
     }
     val matchCache: MatchCacheRepository by lazy { MatchCacheRepository(appContext) }

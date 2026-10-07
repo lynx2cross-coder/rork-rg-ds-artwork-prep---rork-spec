@@ -22,6 +22,11 @@ data class AppSettings(
     val preferredRegion: String = "wor",
     val forceExportFallback: Boolean = false,
     val generateGamelist: Boolean = false,
+    /**
+     * Removes, on each library scan, cover images whose ROM has been deleted. Off by
+     * default: it is the one setting that deletes files the user can see.
+     */
+    val cleanOrphanedArtwork: Boolean = false,
     /** The credential-free source, on by default so the app works out of the box. */
     val useHasheous: Boolean = true,
     /** Optional: a free key the user requests from thegamesdb.net themselves. */
@@ -116,6 +121,7 @@ class SettingsRepository(context: Context) {
         preferredRegion = prefs.getString(KEY_REGION, "wor").orEmpty().ifBlank { "wor" },
         forceExportFallback = prefs.getBoolean(KEY_FORCE_EXPORT, false),
         generateGamelist = prefs.getBoolean(KEY_GENERATE_GAMELIST, false),
+        cleanOrphanedArtwork = prefs.getBoolean(KEY_CLEAN_ORPHANED_ARTWORK, false),
         useHasheous = prefs.getBoolean(KEY_USE_HASHEOUS, true),
         theGamesDbApiKey = prefs.getString(KEY_TGDB_KEY, "").orEmpty(),
         useLibretroThumbnails = prefs.getBoolean(KEY_USE_LIBRETRO, true),
@@ -138,6 +144,7 @@ class SettingsRepository(context: Context) {
             .putString(KEY_REGION, update.preferredRegion)
             .putBoolean(KEY_FORCE_EXPORT, update.forceExportFallback)
             .putBoolean(KEY_GENERATE_GAMELIST, update.generateGamelist)
+            .putBoolean(KEY_CLEAN_ORPHANED_ARTWORK, update.cleanOrphanedArtwork)
             .putBoolean(KEY_USE_HASHEOUS, update.useHasheous)
             .putString(KEY_TGDB_KEY, update.theGamesDbApiKey)
             .putBoolean(KEY_USE_LIBRETRO, update.useLibretroThumbnails)
@@ -169,6 +176,10 @@ class SettingsRepository(context: Context) {
 
     fun setGenerateGamelist(enabled: Boolean) {
         write(current.copy(generateGamelist = enabled))
+    }
+
+    fun setCleanOrphanedArtwork(enabled: Boolean) {
+        write(current.copy(cleanOrphanedArtwork = enabled))
     }
 
     fun setUseHasheous(enabled: Boolean) {
@@ -234,6 +245,7 @@ class SettingsRepository(context: Context) {
         const val KEY_REGION = "preferred_region"
         const val KEY_FORCE_EXPORT = "force_export"
         const val KEY_GENERATE_GAMELIST = "generate_gamelist"
+        const val KEY_CLEAN_ORPHANED_ARTWORK = "clean_orphaned_artwork"
         const val KEY_USE_HASHEOUS = "use_hasheous"
         const val KEY_TGDB_KEY = "tgdb_api_key"
         const val KEY_USE_LIBRETRO = "use_libretro_thumbnails"

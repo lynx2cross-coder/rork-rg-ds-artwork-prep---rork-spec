@@ -445,6 +445,11 @@ internal fun locationSummaryLabel(summary: LocationScanSummary): String = when {
             1 -> append(" \u00b7 1 deleted game removed from gamelist")
             else -> append(" \u00b7 $removed deleted games removed from gamelist")
         }
+        when (val covers = summary.orphanCoversRemoved) {
+            0 -> Unit
+            1 -> append(" \u00b7 1 orphaned cover removed")
+            else -> append(" \u00b7 $covers orphaned covers removed")
+        }
     }
 }
 

@@ -17,8 +17,8 @@ plugins {
  * word followed by `=` and digits, and must find the real declaration inside
  * `defaultConfig`, not a helper up here.
  */
-val declaredBuildNumber = 27
-val declaredVersionName = "1.6.5"
+val declaredBuildNumber = 28
+val declaredVersionName = "1.6.6"
 
 /**
  * Values at or above this are a packaging timestamp rather than a hand-written build
@@ -189,6 +189,13 @@ android {
         // plain gallery again (summary line, rescan button, covers). The per-location
         // counting behind it, scanning, matching and location tracking are unchanged.
         //
+        // 1.6.6: PATCH. Optional orphaned-artwork cleanup, off by default (Settings ->
+        // Orphaned artwork). When on, each library scan deletes cover images directly
+        // inside a cover folder (Imgs/images/media/boxart/covers) that no file or folder
+        // beside it still shares a name with, in every writable saved location, each
+        // through its own grant. Never ROMs, folders, nested or ROM-adjacent images;
+        // nothing in folders with no game or where no cover matches any game.
+        //
         // The next line MUST stay a plain integer literal. The packaging step that
         // builds the installable APK rewrites this file first, replacing the first
         // `versionCode = <digits>` it finds with a build timestamp — which is what
@@ -198,7 +205,7 @@ android {
         // already had the stamped 1789174724 installed. Android will not install a
         // lower version code over a higher one, so the RG DS rejected the package.
         // A reference compiles and tests green — it fails only on the device.
-        versionCode = 27
+        versionCode = 28
         versionName = declaredVersionName
 
         // Warn — never fail — when the literal above and declaredBuildNumber disagree.

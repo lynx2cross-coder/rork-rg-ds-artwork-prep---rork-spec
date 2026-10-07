@@ -490,6 +490,17 @@ fun SettingsScreen(
             )
         }
         val maintenanceSection: @Composable () -> Unit = {
+            SectionTitle("Orphaned artwork")
+            ToggleRow(
+                title = "Remove covers of deleted ROMs",
+                description = "On each library scan, delete cover images in Imgs (or images, media, " +
+                    "boxart, covers) whose ROM is no longer in that folder, in every saved ROM " +
+                    "location. A cover is kept if any file there still shares its name. ROMs are " +
+                    "never touched; read-only locations are skipped.",
+                checked = settings.cleanOrphanedArtwork,
+                onCheckedChange = { AppGraph.settings.setCleanOrphanedArtwork(it) },
+            )
+
             SectionTitle("Remembered matches")
             Text(
                 text = "$cacheSize ROM identities are mapped to a game, so they are never searched twice.",
@@ -529,7 +540,8 @@ fun SettingsScreen(
             Text(
                 text = "This app only reads your ROMs and writes cover images. It never renames, " +
                     "moves, deletes or modifies ROMs, saves, emulators or firmware, and it never " +
-                    "needs root.",
+                    "needs root. With orphaned-artwork cleanup on, the only files it deletes are " +
+                    "cover images whose ROM is gone.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
             )
