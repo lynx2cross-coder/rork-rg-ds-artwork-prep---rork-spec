@@ -1,6 +1,18 @@
 package com.rork.rgdsartworkprep.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as rowItems
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import com.rork.rgdsartworkprep.ui.theme.AnbernicOrange
+import com.rork.rgdsartworkprep.ui.theme.HairlineBorder
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -81,6 +93,13 @@ fun ArtworkScreen(onBack: () -> Unit) {
     }
 
     val prepared = library.scan.prepared
+    // Not persisted: the gallery opens on every platform each time.
+    var selectedPlatform by rememberSaveable { mutableStateOf<String?>(null) }
+    val platformChips = remember(prepared) { ArtworkPlatforms.chips(prepared) { it.system } }
+    val activePlatform = ArtworkPlatforms.effectiveSelection(selectedPlatform, platformChips)
+    val shown = remember(prepared, activePlatform) {
+        ArtworkPlatforms.filter(prepared, activePlatform) { it.system }
+    }
 
     Scaffold(
         containerColor = Graphite,
@@ -132,6 +151,15 @@ fun ArtworkScreen(onBack: () -> Unit) {
                         "and appear here after the next library scan.",
                 )
             } else {
+                // One platform needs no filter, so the gallery stays as it was.
+                if (platformChips.size > 1) {
+                    PlatformFilterRow(
+                        chips = platformChips,
+                        allCount = prepared.size,
+                        selected = activePlatform,
+                        onSelect = { selectedPlatform = it },
+                    )
+                }
                 Text(
                     text = coversInPlaceLabel(prepared.size, locations.size, library.isScanning),
                     modifier = Modifier.padding(
@@ -155,13 +183,58 @@ fun ArtworkScreen(onBack: () -> Unit) {
                 ) {
                     // Keyed by the location-aware id, so the same game in two locations
                     // is two tiles, each showing the cover that sits in its own folder.
-                    items(prepared, key = { it.id }) { rom ->
+                    items(shown, key = { it.id }) { rom ->
                         ArtworkTile(rom, showLocation = locations.size > 1)
                     }
                 }
             }
         }
     }
+}
+
+/** One chip per platform with covers, scrolling sideways when they outgrow the screen. */
+@Composable
+private fun PlatformFilterRow(
+    chips: List<ArtworkPlatforms.Chip>,
+    allCount: Int,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+) {
+    val layout = LocalAppLayout.current
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(top = if (layout.isShort) 4.dp else 8.dp),
+        contentPadding = PaddingValues(horizontal = layout.screenPadding),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item(key = "all") {
+            PlatformChip(label = "All", count = allCount, selected = selected == null) { onSelect(null) }
+        }
+        rowItems(chips, key = { it.key }) { chip ->
+            PlatformChip(label = chip.label, count = chip.count, selected = selected == chip.key) {
+                onSelect(if (selected == chip.key) null else chip.key)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlatformChip(label: String, count: Int, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text("$label \u00b7 $count") },
+        shape = RoundedCornerShape(20.dp),
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = Graphite,
+            labelColor = TextSecondary,
+            selectedContainerColor = Graphite,
+            selectedLabelColor = AnbernicOrange,
+        ),
+        border = BorderStroke(1.dp, if (selected) AnbernicOrange else HairlineBorder),
+        modifier = Modifier.clearAndSetSemantics {
+            contentDescription = "$label, $count covers" + if (selected) ", selected" else ""
+        },
+    )
 }
 
 @Composable

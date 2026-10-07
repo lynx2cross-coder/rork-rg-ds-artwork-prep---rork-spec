@@ -17,8 +17,8 @@ plugins {
  * word followed by `=` and digits, and must find the real declaration inside
  * `defaultConfig`, not a helper up here.
  */
-val declaredBuildNumber = 28
-val declaredVersionName = "1.6.6"
+val declaredBuildNumber = 29
+val declaredVersionName = "1.6.7"
 
 /**
  * Values at or above this are a packaging timestamp rather than a hand-written build
@@ -196,6 +196,11 @@ android {
         // through its own grant. Never ROMs, folders, nested or ROM-adjacent images;
         // nothing in folders with no game or where no cover matches any game.
         //
+        // 1.6.7: PATCH. UI only. Platform filter chips over the Artwork gallery: All,
+        // then one chip per detected system with covers (3DS and NDS first), Other
+        // for undetected games. Shown only when covers span two or more platforms.
+        // Scanning, matching, location tracking and cleanup are unchanged.
+        //
         // The next line MUST stay a plain integer literal. The packaging step that
         // builds the installable APK rewrites this file first, replacing the first
         // `versionCode = <digits>` it finds with a build timestamp — which is what
@@ -205,7 +210,7 @@ android {
         // already had the stamped 1789174724 installed. Android will not install a
         // lower version code over a higher one, so the RG DS rejected the package.
         // A reference compiles and tests green — it fails only on the device.
-        versionCode = 28
+        versionCode = 29
         versionName = declaredVersionName
 
         // Warn — never fail — when the literal above and declaredBuildNumber disagree.
